@@ -76,21 +76,38 @@ source venv/bin/activate  # or venv\Scripts\activate on Windows
 pip install -r requirements.txt
 ```
 
-2. Copy environment variables:
+2. Frontend setup:
 ```bash
-cp .env.example .env
+cd frontend
+npm install
+npm start  # Development server on port 3000
 ```
 
 3. Run the backend:
 ```bash
-uvicorn app.main:app --reload
+cd backend
+uvicorn app.main:app --reload --port 8000
 ```
+
+4. Access the application:
+   - Frontend: http://localhost:3000
+   - Backend API: http://localhost:8000/docs
 
 ### Running Tests
 
 ```bash
+# Backend tests
 cd backend
 pytest -v
+
+# Test specific functionality
+pytest tests/test_websocket.py -v  # WebSocket tests
+pytest tests/test_pathfinding.py -v  # Movement tests
+pytest tests/test_personas.py -v  # Persona tests
+
+# Frontend tests (when implemented)
+cd frontend
+npm test
 ```
 
 ## Architecture
@@ -110,6 +127,30 @@ Once running, visit:
 - **API Docs**: http://localhost:8000/docs (Swagger/OpenAPI)
 - **WebSocket**: ws://localhost:8000/ws (Real-time chat)
 
+## Features
+
+### 🤖 AI Companion System
+- **SillyTavern Personas**: Load and chat with custom AI characters
+- **Model Flexibility**: Switch between local (Ollama) and cloud (Nano-GPT) models
+- **Streaming Responses**: Real-time message streaming for natural conversations
+- **Memory System**: Vector-based memory storage for contextual conversations
+
+### 🏠 Interactive Room Environment
+- **64x16 Grid**: Pixel-perfect room layout designed for 1920x480 displays
+- **Object Interaction**: Click furniture and objects to change their states
+- **Assistant Movement**: A* pathfinding for realistic navigation
+- **Real-time Updates**: WebSocket synchronization across all clients
+
+### 🎭 Persona Management
+- **PNG Metadata**: Extracts character data from SillyTavern V2 persona cards
+- **Dynamic Loading**: Hot-swap between different AI personalities
+- **Character Consistency**: Maintains persona traits across conversations
+
+### 📱 Responsive Design
+- **Desktop Layout**: Optimized for dual-monitor setups
+- **Mobile Support**: Tab-based interface for mobile devices
+- **Adaptive UI**: Automatically adjusts to screen size and orientation
+
 ## Usage
 
 1. **Select a Persona**: Click the persona selector to choose an AI character
@@ -122,28 +163,65 @@ Once running, visit:
 
 See [DESKMATE_SPEC.md](DESKMATE_SPEC.md) for the complete development roadmap.
 
-## Git Workflow
+## Technology Stack
 
-### Repository Setup
-- **Remote**: https://github.com/YourBr0ther/deskmate.git
-- **Main Branch**: `main`
-- **Current Status**: Phase 1 Complete
+### Backend
+- **FastAPI**: Modern Python web framework with automatic OpenAPI docs
+- **WebSocket**: Real-time bidirectional communication for chat
+- **SQLAlchemy**: Async ORM for PostgreSQL database operations
+- **Qdrant**: Vector database for semantic memory storage
+- **Pydantic**: Data validation and serialization
 
-### Commit History
-- **Phase 1**: Foundation & Infrastructure (Complete)
-- All commits include automated co-authoring with Claude Code
+### Frontend
+- **React 18**: Modern UI library with hooks and functional components
+- **TypeScript**: Type-safe JavaScript for better development experience
+- **Zustand**: Lightweight state management (chat, room, persona stores)
+- **Tailwind CSS**: Utility-first CSS framework for responsive design
 
-### Development Commands
+### LLM Integration
+- **Ollama**: Local LLM hosting (llama3.2, phi-3, gemma, etc.)
+- **Nano-GPT API**: Cloud-based LLM service integration
+- **Streaming**: Real-time response streaming for better UX
+
+### Development & Deployment
+- **Docker Compose**: Multi-container orchestration
+- **Nginx**: Reverse proxy and static file serving
+- **Pytest**: Comprehensive test suite for backend
+- **Hot Reload**: Development servers with automatic reloading
+
+## Troubleshooting
+
+### Common Issues
+
+**WebSocket connection failed:**
 ```bash
-# Check repository status
-git status
+# Check if backend is running
+curl http://localhost:8000/health
 
-# View commit history
-git log --oneline
-
-# Push to remote (when ready)
-git push -u origin main
+# Check Docker containers
+docker compose ps
 ```
+
+**Ollama model not found:**
+```bash
+# List available models
+ollama list
+
+# Pull a model
+ollama pull llama3.2:latest
+```
+
+**Frontend build errors:**
+```bash
+# Clear node modules and reinstall
+cd frontend
+rm -rf node_modules package-lock.json
+npm install
+```
+
+## Contributing
+
+This project uses conventional commits and automated co-authoring with Claude Code. All commits include proper attribution and follow semantic versioning principles.
 
 ## License
 
