@@ -4,6 +4,7 @@
 
 import React, { useCallback, useMemo, useEffect } from 'react';
 import { useRoomStore } from '../stores/roomStore';
+import { useChatStore } from '../stores/chatStore';
 import { Position } from '../types/room';
 
 const Grid: React.FC = () => {
@@ -25,6 +26,8 @@ const Grid: React.FC = () => {
     setObjectState,
     getObjectStates
   } = useRoomStore();
+
+  const { sendAssistantMove, isConnected } = useChatStore();
 
   const gridMap = useMemo(() => getGridMap(), [getGridMap]);
 
@@ -74,10 +77,16 @@ const Grid: React.FC = () => {
       // Move assistant to clicked position if it's walkable
       const cell = gridMap[position.y]?.[position.x];
       if (cell && cell.walkable && !cell.occupied) {
-        // Use pathfinding to move assistant
-        const success = await moveAssistantToPosition(position.x, position.y);
-        if (success) {
-          console.log(`Assistant moved to (${position.x}, ${position.y})`);
+        // Use WebSocket if connected, otherwise fall back to direct API
+        if (isConnected) {
+          sendAssistantMove(position.x, position.y);
+          console.log(`Sent assistant move request via WebSocket to (${position.x}, ${position.y})`);
+        } else {
+          // Fallback to direct API call
+          const success = await moveAssistantToPosition(position.x, position.y);
+          if (success) {
+            console.log(`Assistant moved to (${position.x}, ${position.y}) via API`);
+          }
         }
         selectObject(undefined);
       }

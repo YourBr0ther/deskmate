@@ -12,7 +12,6 @@ import ChatWindow from './components/Chat/ChatWindow';
 const App: React.FC = () => {
   const [isMobile, setIsMobile] = useState(false);
   const [showPersonaSelector, setShowPersonaSelector] = useState(false);
-  const [activeTab, setActiveTab] = useState<'room' | 'chat'>('room');
   const { personas, selectedPersona, isLoading, error, loadPersonas, loadPersonaByName, clearError } = usePersonaStore();
   const { setViewMode } = useRoomStore();
 
@@ -37,6 +36,7 @@ const App: React.FC = () => {
 
   if (isMobile) {
     // Mobile layout - Tab-based interface to reduce crowding
+    const [activeTab, setActiveTab] = useState<'room' | 'chat'>('room');
 
     return (
       <div className="w-full h-full flex flex-col bg-gray-900 text-white">
@@ -117,9 +117,7 @@ const App: React.FC = () => {
         <div className="flex-1 overflow-hidden">
           {activeTab === 'room' ? (
             <div className="h-full p-4">
-              <div className="mobile-grid-container">
-                <Grid />
-              </div>
+              <Grid />
             </div>
           ) : (
             <ChatWindow />
@@ -164,73 +162,69 @@ const App: React.FC = () => {
 
         {/* Persona Selector Dropdown - Desktop */}
         {showPersonaSelector && (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onClick={() => setShowPersonaSelector(false)}>
-            <div className="w-96 bg-gray-800 rounded-lg shadow-2xl border border-gray-700 p-4 max-h-96 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold">Select Persona</h3>
-                <button
-                  onClick={() => setShowPersonaSelector(false)}
-                  className="p-1 hover:bg-gray-700 rounded"
-                >
-                  ✕
-                </button>
-              </div>
-              {isLoading ? (
-                <div className="text-center py-4">
-                  <div className="animate-spin w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {personas.map((persona) => (
-                    <button
-                      key={persona.name}
-                      onClick={() => handlePersonaSelect(persona.name)}
-                      className={`w-full p-3 rounded-lg border text-left transition-colors ${
-                        selectedPersona?.persona.data.name === persona.name
-                          ? 'bg-blue-900/50 border-blue-500'
-                          : 'bg-gray-700 border-gray-600 hover:bg-gray-600'
-                      }`}
-                    >
-                      <div className="font-medium">{persona.name}</div>
-                      <div className="text-sm text-gray-400">by {persona.creator}</div>
-                      {persona.tags && (
-                        <div className="mt-1">
-                          {persona.tags.slice(0, 3).map((tag, i) => (
-                            <span key={i} className="inline-block text-xs bg-gray-600 px-2 py-1 rounded mr-1">
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
+          <div className="absolute top-16 right-96 z-50 w-80 bg-gray-800 rounded-lg shadow-2xl border border-gray-700 p-4 max-h-96 overflow-y-auto">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold">Select Persona</h3>
+              <button
+                onClick={() => setShowPersonaSelector(false)}
+                className="p-1 hover:bg-gray-700 rounded"
+              >
+                ✕
+              </button>
             </div>
+            {isLoading ? (
+              <div className="text-center py-4">
+                <div className="animate-spin w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {personas.map((persona) => (
+                  <button
+                    key={persona.name}
+                    onClick={() => handlePersonaSelect(persona.name)}
+                    className={`w-full p-3 rounded-lg border text-left transition-colors ${
+                      selectedPersona?.persona.data.name === persona.name
+                        ? 'bg-blue-900/50 border-blue-500'
+                        : 'bg-gray-700 border-gray-600 hover:bg-gray-600'
+                    }`}
+                  >
+                    <div className="font-medium">{persona.name}</div>
+                    <div className="text-sm text-gray-400">by {persona.creator}</div>
+                    {persona.tags && (
+                      <div className="mt-1">
+                        {persona.tags.slice(0, 3).map((tag, i) => (
+                          <span key={i} className="inline-block text-xs bg-gray-600 px-2 py-1 rounded mr-1">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        {/* Room Grid - Properly sized */}
-        <div className="flex-1 p-4 overflow-auto">
-          <div className="desktop-grid-container">
-            <div className="relative">
-              <Grid />
+        {/* Room Grid - Centered */}
+        <div className="flex-1 flex items-center justify-center p-6 overflow-hidden">
+          <div className="relative">
+            <Grid />
 
-              {/* Room Status Bar */}
-              <div className="absolute bottom-0 left-0 right-0 bg-gray-800/90 backdrop-blur px-4 py-2 flex items-center justify-between">
-                <div className="flex items-center space-x-4 text-sm">
-                  <span className="text-gray-400">Room:</span>
-                  <span>Living Room</span>
-                  {selectedPersona && (
-                    <>
-                      <span className="text-gray-400">•</span>
-                      <span className="flex items-center">
-                        <span className="status-dot bg-green-500"></span>
-                        Active
-                      </span>
-                    </>
-                  )}
-                </div>
+            {/* Room Status Bar */}
+            <div className="absolute bottom-0 left-0 right-0 bg-gray-800/90 backdrop-blur px-4 py-2 flex items-center justify-between">
+              <div className="flex items-center space-x-4 text-sm">
+                <span className="text-gray-400">Room:</span>
+                <span>Living Room</span>
+                {selectedPersona && (
+                  <>
+                    <span className="text-gray-400">•</span>
+                    <span className="flex items-center">
+                      <span className="status-dot bg-green-500"></span>
+                      Active
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -239,20 +233,13 @@ const App: React.FC = () => {
 
       {/* Right: Chat Panel - Optimized width */}
       <div className="w-96 bg-gray-800 border-l border-gray-700 flex flex-col">
-        {/* Header */}
-        <div className="flex-shrink-0 p-4 border-b border-gray-700">
-          <h2 className="text-lg font-bold">DeskMate Chat</h2>
-        </div>
-
         {/* Companion Portrait - Compact */}
         {selectedPersona && (
           <div className="flex-shrink-0 p-4 border-b border-gray-700">
             <div className="flex items-center space-x-4">
-              <div className="w-16 h-16 bg-gradient-to-b from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
-                <CompanionPanel />
-              </div>
+              <CompanionPanel />
               <div className="flex-1">
-                <h3 className="font-semibold">{selectedPersona.persona.data.name}</h3>
+                <h2 className="font-semibold">{selectedPersona.persona.data.name}</h2>
                 <div className="text-sm text-gray-400">{selectedPersona.persona.data.creator}</div>
                 <div className="flex items-center mt-1 text-sm">
                   <span className="mr-2">😊</span>
@@ -264,7 +251,7 @@ const App: React.FC = () => {
         )}
 
         {/* Chat Window - Takes remaining space */}
-        <div className="flex-1 min-h-0">
+        <div className="flex-1 overflow-hidden">
           <ChatWindow />
         </div>
       </div>
