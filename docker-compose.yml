@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: deskmate-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://deskmate:deskmate@postgres:5432/deskmate
+      - QDRANT_URL=http://qdrant:6333
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - postgres
+      - qdrant
+    volumes:
+      - ./backend:/app
+      - ./data:/data
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - deskmate-network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: deskmate-postgres
+    environment:
+      - POSTGRES_USER=deskmate
+      - POSTGRES_PASSWORD=deskmate
+      - POSTGRES_DB=deskmate
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - deskmate-network
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: deskmate-qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - deskmate-network
+
+volumes:
+  postgres_data:
+  qdrant_data:
+
+networks:
+  deskmate-network:
+    driver: bridge
