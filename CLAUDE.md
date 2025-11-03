@@ -8,7 +8,14 @@ DeskMate is a virtual AI companion that lives in a simulated room environment on
 
 ## Current Status
 
-This is a greenfield project - only the specification exists. Implementation should follow the 24-week development plan starting with Phase 1.
+**Phase 1: COMPLETE ✅** - Foundation & Infrastructure implemented and tested.
+**Next**: Phase 2 - Persona System & Basic Frontend
+
+## Git Repository
+
+- **Remote**: https://github.com/yourbr0ther/DeskMate.git
+- **Branch**: main  
+- **Commit**: Phase 1 complete with Docker, FastAPI, databases, and tests
 
 ## Development Commands
 
@@ -41,6 +48,13 @@ npm run test
 docker-compose up -d  # Start all services
 docker-compose logs -f  # View logs
 docker-compose down  # Stop services
+
+# Git workflow
+git status  # Check repository status
+git log --oneline  # View commit history  
+git add .  # Stage changes
+git commit -m "message"  # Commit with message
+git push origin main  # Push to remote
 ```
 
 ### Testing Commands

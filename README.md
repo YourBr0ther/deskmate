@@ -19,6 +19,7 @@ DeskMate is a virtual AI companion that lives in a simulated room environment di
 - Docker and Docker Compose
 - Python 3.11+ (for local development)
 - Node.js 18+ (for frontend development - coming in Phase 2)
+- Git (for version control)
 
 ### Running with Docker
 
@@ -81,6 +82,29 @@ Once running, visit:
 ## Development Phases
 
 See [DESKMATE_SPEC.md](DESKMATE_SPEC.md) for the complete development roadmap.
+
+## Git Workflow
+
+### Repository Setup
+- **Remote**: https://github.com/yourbr0ther/DeskMate.git
+- **Main Branch**: `main`
+- **Current Status**: Phase 1 Complete
+
+### Commit History
+- **Phase 1**: Foundation & Infrastructure (Complete)
+- All commits include automated co-authoring with Claude Code
+
+### Development Commands
+```bash
+# Check repository status
+git status
+
+# View commit history
+git log --oneline
+
+# Push to remote (when ready)
+git push -u origin main
+```
 
 ## License
 
