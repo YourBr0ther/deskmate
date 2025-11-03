@@ -282,6 +282,7 @@ The Memory Keeper has access to {retrieved_count} relevant past messages and {co
                 if chunk:
                     response += chunk
 
+            logger.info(f"Brain Council raw LLM response: {response[:200]}...")
             return response.strip()
         except Exception as e:
             logger.error(f"Error querying council: {e}")
@@ -318,6 +319,7 @@ The Memory Keeper has access to {retrieved_count} relevant past messages and {co
         except (json.JSONDecodeError, KeyError) as e:
             logger.error(f"Error parsing council response: {e}")
             logger.error(f"Raw response: {response}")
+            logger.error(f"Attempted to parse: {response[start:end] if 'start' in locals() and 'end' in locals() else 'No JSON extraction'}")
 
             # Return safe fallback
             return {
