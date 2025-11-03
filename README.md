@@ -25,8 +25,8 @@ DeskMate is a virtual AI companion that lives in a simulated room environment di
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourbr0ther/DeskMate.git
-cd DeskMate
+git clone https://github.com/YourBr0ther/deskmate.git
+cd deskmate
 ```
 
 2. Start all services:
@@ -86,7 +86,7 @@ See [DESKMATE_SPEC.md](DESKMATE_SPEC.md) for the complete development roadmap.
 ## Git Workflow
 
 ### Repository Setup
-- **Remote**: https://github.com/yourbr0ther/DeskMate.git
+- **Remote**: https://github.com/YourBr0ther/deskmate.git
 - **Main Branch**: `main`
 - **Current Status**: Phase 1 Complete
 

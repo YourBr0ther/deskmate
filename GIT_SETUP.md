@@ -5,7 +5,7 @@
 
 ## Repository Information
 
-- **URL**: https://github.com/yourbr0ther/DeskMate.git
+- **URL**: https://github.com/YourBr0ther/deskmate.git
 - **Branch**: main
 - **Initial Commit**: Phase 1 - Foundation & Infrastructure
 - **Commits**: 2 total
@@ -38,7 +38,7 @@ git branch -m main  # Renamed from master to main
 
 ### 4. Remote Configuration
 ```bash
-git remote add origin https://github.com/yourbr0ther/DeskMate.git
+git remote add origin git@github.com:YourBr0ther/deskmate.git
 ```
 
 ## Repository Structure

@@ -13,7 +13,7 @@ DeskMate is a virtual AI companion that lives in a simulated room environment on
 
 ## Git Repository
 
-- **Remote**: https://github.com/yourbr0ther/DeskMate.git
+- **Remote**: https://github.com/YourBr0ther/deskmate.git
 - **Branch**: main  
 - **Commit**: Phase 1 complete with Docker, FastAPI, databases, and tests
 
