@@ -100,6 +100,37 @@ export const usePersonaStore = create<PersonaStore>((set, get) => ({
       };
 
       setSelectedPersona(loadedPersona);
+
+      // Initialize conversation memory for this persona
+      try {
+        const convResponse = await fetch(`${getApiBaseUrl()}/conversation/initialize`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            persona_name: personaData.persona.data.name,
+            load_history: true
+          }),
+        });
+
+        if (convResponse.ok) {
+          const convData = await convResponse.json();
+          console.log(`Initialized conversation for persona: ${personaData.persona.data.name}`);
+
+          // Load chat history if available
+          if (convData.messages && convData.messages.length > 0) {
+            // Import the chat store to load history
+            const { useChatStore } = await import('./chatStore');
+            const chatStore = useChatStore.getState();
+            chatStore.loadChatHistory(convData.messages);
+            console.log(`Loaded ${convData.count} previous messages for ${personaData.persona.data.name}`);
+          }
+        }
+      } catch (convError) {
+        console.warn('Failed to initialize conversation memory:', convError);
+        // Don't fail the persona loading if conversation init fails
+      }
     } catch (error) {
       console.error('Error loading persona by name:', error);
       setError(error instanceof Error ? error.message : 'Failed to load persona');

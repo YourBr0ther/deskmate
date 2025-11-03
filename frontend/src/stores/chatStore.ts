@@ -3,6 +3,7 @@
  */
 
 import { create } from 'zustand';
+import { usePersonaStore } from './personaStore';
 
 export interface ChatMessage {
   id: string;
@@ -48,12 +49,14 @@ interface ChatState {
   addMessage: (message: Omit<ChatMessage, 'id'>) => void;
   updateMessage: (id: string, updates: Partial<ChatMessage>) => void;
   clearMessages: () => void;
+  loadChatHistory: (messages: ChatMessage[]) => void;
 
   // WebSocket actions
   connect: () => void;
   disconnect: () => void;
   sendMessage: (content: string) => void;
   sendAssistantMove: (x: number, y: number) => void;
+  clearChat: (clearType: 'current' | 'all' | 'persona', personaName?: string) => void;
 
   // Model management
   setAvailableModels: (models: LLMModel[]) => void;
@@ -105,6 +108,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   clearMessages: () => set({ messages: [] }),
+
+  loadChatHistory: (messages) => {
+    // Convert loaded messages to proper ChatMessage format with unique IDs
+    const formattedMessages: ChatMessage[] = messages.map((msg) => ({
+      ...msg,
+      id: msg.id || generateId(), // Use existing ID or generate new one
+    }));
+    set({ messages: formattedMessages });
+  },
 
   // Model management
   setAvailableModels: (models) => set({ availableModels: models }),
@@ -228,10 +240,32 @@ export const useChatStore = create<ChatState>((set, get) => ({
       timestamp: new Date().toISOString()
     });
 
-    // Send to backend
+    // Get current persona context for Brain Council
+    const getPersonaContext = () => {
+      try {
+        const personaState = usePersonaStore.getState();
+        if (personaState.selectedPersona) {
+          const persona = personaState.selectedPersona.persona.data;
+          return {
+            name: persona.name,
+            personality: persona.personality || persona.description,
+            creator: persona.creator,
+            tags: persona.tags || []
+          };
+        }
+      } catch (e) {
+        // Fallback for any errors
+      }
+      return null;
+    };
+
+    // Send to backend with persona context
     websocket.send(JSON.stringify({
       type: 'chat_message',
-      data: { message: content }
+      data: {
+        message: content,
+        persona_context: getPersonaContext()
+      }
     }));
 
     // Clear current message
@@ -251,6 +285,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
       data: { x, y }
     }));
   },
+
+  clearChat: (clearType: 'current' | 'all' | 'persona', personaName?: string) => {
+    const { websocket, isConnected } = get();
+
+    if (!isConnected || !websocket) {
+      console.error('Not connected to WebSocket');
+      return;
+    }
+
+    websocket.send(JSON.stringify({
+      type: 'clear_chat',
+      data: {
+        clear_type: clearType,
+        persona_name: personaName
+      }
+    }));
+  },
 }));
 
 // Handle incoming WebSocket messages
@@ -262,6 +313,14 @@ function handleWebSocketMessage(message: any) {
     case 'connection_established':
       // Connection established successfully
       store.setCurrentModel(data.current_model);
+      break;
+
+    case 'chat_history_loaded':
+      // Load previous chat history for the persona
+      if (data.messages && data.messages.length > 0) {
+        store.loadChatHistory(data.messages);
+        console.log(`Loaded ${data.count} previous messages`);
+      }
       break;
 
     case 'chat_message':
@@ -333,6 +392,17 @@ function handleWebSocketMessage(message: any) {
         content: `Error: ${data.message}`,
         timestamp: new Date().toISOString()
       });
+      break;
+
+    case 'chat_cleared':
+      // Chat was cleared - update UI
+      store.clearMessages();
+      store.addMessage({
+        role: 'system',
+        content: data.message,
+        timestamp: new Date().toISOString()
+      });
+      console.log(`Chat cleared: ${data.clear_type}`);
       break;
 
     case 'pong':

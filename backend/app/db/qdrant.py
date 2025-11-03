@@ -113,6 +113,71 @@ class QdrantManager:
             logger.error(f"Failed to search memories: {e}")
             return []
 
+    async def clear_collection(self, collection: str) -> bool:
+        """Clear all points from a collection."""
+        try:
+            # Delete the collection and recreate it (fastest way to clear)
+            self.client.delete_collection(collection_name=collection)
+
+            # Recreate the collection
+            if collection in self.collections:
+                config = self.collections[collection]
+                self.client.create_collection(
+                    collection_name=collection,
+                    vectors_config=VectorParams(
+                        size=config["size"],
+                        distance=config["distance"]
+                    )
+                )
+                logger.info(f"Cleared and recreated collection: {collection}")
+                return True
+            else:
+                logger.error(f"Unknown collection: {collection}")
+                return False
+        except Exception as e:
+            logger.error(f"Failed to clear collection {collection}: {e}")
+            return False
+
+    async def clear_all_collections(self) -> bool:
+        """Clear all conversation data from all collections."""
+        try:
+            success = True
+            for collection_name in self.collections.keys():
+                if not await self.clear_collection(collection_name):
+                    success = False
+            return success
+        except Exception as e:
+            logger.error(f"Failed to clear all collections: {e}")
+            return False
+
+    async def delete_persona_memories(self, persona_name: str) -> bool:
+        """Delete all memories for a specific persona."""
+        try:
+            # We need to scroll through and delete points with matching persona_name
+            # This is more complex than clearing all, so we'll use the filter approach
+            from qdrant_client.models import Filter, FieldCondition, MatchValue
+
+            filter_condition = Filter(
+                must=[
+                    FieldCondition(
+                        key="persona_name",
+                        match=MatchValue(value=persona_name)
+                    )
+                ]
+            )
+
+            # Delete from memories collection
+            result = self.client.delete(
+                collection_name="memories",
+                points_selector=filter_condition
+            )
+
+            logger.info(f"Deleted memories for persona: {persona_name}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete persona memories: {e}")
+            return False
+
 
 # Global instance
 qdrant_manager = QdrantManager()

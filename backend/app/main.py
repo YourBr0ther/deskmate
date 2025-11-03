@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 from contextlib import asynccontextmanager
 
-from app.api import health, personas, room, assistant, chat, websocket
+from app.api import health, personas, room, assistant, chat, websocket, conversation
 from app.db.database import init_db
 
 logging.basicConfig(level=logging.INFO)
@@ -38,4 +38,5 @@ app.include_router(personas.router)
 app.include_router(room.router)
 app.include_router(assistant.router)
 app.include_router(chat.router)
+app.include_router(conversation.router, prefix="/conversation", tags=["conversation"])
 app.include_router(websocket.router)

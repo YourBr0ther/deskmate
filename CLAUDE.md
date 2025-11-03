@@ -79,6 +79,23 @@ npm run lint
 npm run typecheck
 ```
 
+### Memory Management Commands
+```bash
+# Backend memory clearing (CLI)
+cd backend
+python scripts/clear_memory.py --stats                # Show memory statistics
+python scripts/clear_memory.py --current              # Clear current chat only
+python scripts/clear_memory.py --persona "Alice"      # Clear specific persona
+python scripts/clear_memory.py --all                  # Purge ALL memory (DESTRUCTIVE)
+
+# API endpoints for memory clearing
+curl -X POST http://localhost:8000/conversation/memory/clear          # Clear current
+curl -X POST http://localhost:8000/conversation/memory/clear-all      # Clear all (DESTRUCTIVE)
+curl -X POST "http://localhost:8000/conversation/memory/clear-persona?persona_name=Alice"  # Clear persona
+
+# Frontend UI: Use trash icon in chat header for clearing options
+```
+
 ## Architecture Overview
 
 ### Brain Council System

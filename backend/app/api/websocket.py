@@ -17,6 +17,9 @@ from datetime import datetime
 
 from app.services.llm_manager import llm_manager, ChatMessage
 from app.services.assistant_service import assistant_service
+from app.services.brain_council import brain_council
+from app.services.room_service import room_service
+from app.services.conversation_memory import conversation_memory
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +84,10 @@ async def websocket_endpoint(websocket: WebSocket):
     await connection_manager.connect(websocket)
 
     try:
+        # Initialize conversation memory for this session
+        conversation_id = await conversation_memory.initialize_conversation()
+        logger.info(f"Initialized conversation memory: {conversation_id}")
+
         # Send initial state (handle DB connection issues gracefully)
         try:
             assistant_state = await assistant_service.get_assistant_state()
@@ -107,10 +114,14 @@ async def websocket_endpoint(websocket: WebSocket):
             "data": {
                 "message": "Connected to DeskMate",
                 "current_model": llm_manager.current_model,
-                "provider": llm_manager.current_provider.value
+                "provider": llm_manager.current_provider.value,
+                "conversation_id": conversation_id
             },
             "timestamp": datetime.now().isoformat()
         }, websocket)
+
+        # Note: Chat history will be loaded when persona is selected via API
+        # Don't send history on initial WebSocket connection since no persona is selected yet
 
         while True:
             # Receive message from client
@@ -132,6 +143,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 await handle_ping(websocket)
             elif message_type == "model_change":
                 await handle_model_change(websocket, message_data)
+            elif message_type == "clear_chat":
+                await handle_clear_chat(websocket, message_data)
             else:
                 await connection_manager.send_personal_message({
                     "type": "error",
@@ -147,7 +160,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 async def handle_chat_message(websocket: WebSocket, data: Dict[str, Any]):
-    """Handle incoming chat message."""
+    """Handle incoming chat message with Brain Council integration."""
     try:
         user_message = data.get("message", "").strip()
         if not user_message:
@@ -158,48 +171,81 @@ async def handle_chat_message(websocket: WebSocket, data: Dict[str, Any]):
             }, websocket)
             return
 
-        # Get conversation context (could be enhanced with memory later)
-        system_prompt = """You are a virtual AI companion living in a room environment.
-You can move around, interact with objects, and have conversations.
-Be friendly, helpful, and engaging. Keep responses concise but warm."""
-
-        messages = [
-            ChatMessage(role="system", content=system_prompt),
-            ChatMessage(role="user", content=user_message)
-        ]
-
-        # Don't echo user message - frontend already added it
-
-        # Send "typing" indicator
+        # Send "thinking" indicator
         await connection_manager.send_personal_message({
             "type": "assistant_typing",
             "data": {"typing": True},
             "timestamp": datetime.now().isoformat()
         }, websocket)
 
-        # Generate streaming response
-        full_response = ""
-        async for chunk in llm_manager.chat_completion_stream(
-            messages=messages,
-            temperature=0.7
-        ):
-            if chunk:
-                full_response += chunk
-                await connection_manager.send_personal_message({
-                    "type": "chat_stream",
-                    "data": {
-                        "content": chunk,
-                        "full_content": full_response
-                    },
-                    "timestamp": datetime.now().isoformat()
-                }, websocket)
+        # Get persona context (if available)
+        persona_context = data.get("persona_context")
+        persona_name = persona_context.get("name") if persona_context else None
 
-        # Stop typing indicator (frontend will mark last message as complete)
+        # Store user message in conversation memory
+        await conversation_memory.add_user_message(user_message, persona_name)
+
+        # Process through Brain Council
+        logger.info(f"WebSocket: About to call brain_council.process_user_message with message: {user_message[:50]}...")
+        try:
+            council_decision = await brain_council.process_user_message(
+                user_message=user_message,
+                persona_context=persona_context
+            )
+            logger.info("WebSocket: Brain Council completed successfully")
+        except Exception as brain_error:
+            logger.error(f"WebSocket: Brain Council failed with error: {brain_error}")
+            logger.error(f"WebSocket: Error type: {type(brain_error)}")
+            import traceback
+            logger.error(f"WebSocket: Full traceback: {traceback.format_exc()}")
+            raise brain_error
+
+        # Stream the response
+        response_text = council_decision.get("response", "I'm not sure how to respond to that.")
+
+        # Simulate streaming for better UX
+        words = response_text.split()
+        current_response = ""
+
+        for i, word in enumerate(words):
+            current_response += word + " "
+            await connection_manager.send_personal_message({
+                "type": "chat_stream",
+                "data": {
+                    "content": word + " ",
+                    "full_content": current_response.strip()
+                },
+                "timestamp": datetime.now().isoformat()
+            }, websocket)
+            # Small delay for natural typing feel
+            await asyncio.sleep(0.05)
+
+        # Store assistant response in conversation memory
+        actions = council_decision.get("actions", [])
+        await conversation_memory.add_assistant_message(
+            response_text,
+            persona_name,
+            actions if actions else None
+        )
+
+        # Execute any actions the council decided on
+        await execute_council_actions(actions, websocket)
+
+        # Update assistant mood if changed
+        new_mood = council_decision.get("mood")
+        if new_mood:
+            await update_assistant_mood(new_mood)
+
+        # Stop typing indicator
         await connection_manager.send_personal_message({
             "type": "assistant_typing",
             "data": {"typing": False},
             "timestamp": datetime.now().isoformat()
         }, websocket)
+
+        # Send reasoning info for debugging (optional)
+        if council_decision.get("reasoning"):
+            logger.info(f"Council reasoning: {council_decision['reasoning']}")
 
     except Exception as e:
         logger.error(f"Error handling chat message: {e}")
@@ -208,6 +254,92 @@ Be friendly, helpful, and engaging. Keep responses concise but warm."""
             "data": {"message": f"Failed to process chat: {str(e)}"},
             "timestamp": datetime.now().isoformat()
         }, websocket)
+
+        # Stop typing indicator on error
+        await connection_manager.send_personal_message({
+            "type": "assistant_typing",
+            "data": {"typing": False},
+            "timestamp": datetime.now().isoformat()
+        }, websocket)
+
+
+async def execute_council_actions(actions: List[Dict[str, Any]], websocket: WebSocket):
+    """Execute actions decided by the Brain Council."""
+    for action in actions:
+        try:
+            action_type = action.get("type")
+            target = action.get("target")
+            parameters = action.get("parameters", {})
+
+            if action_type == "move":
+                # Move assistant to target coordinates
+                if isinstance(target, str) and "," in target:
+                    # Parse coordinates - handle both "x,y" and "(x, y)" formats
+                    target_clean = target.strip("()").strip()  # Remove parentheses if present
+                    coords = target_clean.split(",")
+                    x, y = int(coords[0].strip()), int(coords[1].strip())
+                elif isinstance(target, dict):
+                    x, y = target.get("x"), target.get("y")
+                else:
+                    continue
+
+                logger.info(f"Executing move action to coordinates ({x}, {y})")
+                result = await assistant_service.move_assistant_to(x, y)
+                if result.get("success"):
+                    logger.info(f"Movement successful - broadcasting assistant state update")
+                    # Broadcast assistant state update
+                    assistant_state = await assistant_service.get_assistant_state()
+                    await connection_manager.broadcast({
+                        "type": "assistant_state",
+                        "data": assistant_state.to_dict(),
+                        "timestamp": datetime.now().isoformat()
+                    })
+                else:
+                    logger.warning(f"Movement failed: {result.get('error', 'Unknown error')}")
+
+            elif action_type == "interact":
+                # Interact with an object
+                object_id = target
+                interaction_type = parameters.get("interaction", "activate")
+
+                if interaction_type == "activate":
+                    # Toggle object state
+                    objects = await room_service.get_all_objects()
+                    target_obj = next((obj for obj in objects if obj["id"] == object_id), None)
+
+                    if target_obj:
+                        # Toggle common states
+                        current_states = await room_service.get_object_states(object_id)
+
+                        if "power" in current_states:
+                            new_state = "off" if current_states["power"] == "on" else "on"
+                            await room_service.set_object_state(object_id, "power", new_state, "assistant")
+                        elif "open" in current_states:
+                            new_state = "closed" if current_states["open"] == "open" else "open"
+                            await room_service.set_object_state(object_id, "open", new_state, "assistant")
+
+            elif action_type == "state_change":
+                # Change object or room state
+                object_id = target
+                state_key = parameters.get("state_key")
+                state_value = parameters.get("state_value")
+
+                if object_id and state_key and state_value:
+                    await room_service.set_object_state(object_id, state_key, state_value, "assistant")
+
+        except Exception as e:
+            logger.error(f"Error executing action {action}: {e}")
+            import traceback
+            logger.error(f"Action execution traceback: {traceback.format_exc()}")
+
+
+async def update_assistant_mood(new_mood: str):
+    """Update the assistant's mood."""
+    try:
+        # This would be implemented in assistant_service if needed
+        logger.info(f"Assistant mood updated to: {new_mood}")
+    except Exception as e:
+        logger.error(f"Error updating assistant mood: {e}")
 
 
 async def handle_assistant_move(websocket: WebSocket, data: Dict[str, Any]):
@@ -319,6 +451,61 @@ async def handle_model_change(websocket: WebSocket, data: Dict[str, Any]):
         await connection_manager.send_personal_message({
             "type": "error",
             "data": {"message": f"Failed to change model: {str(e)}"},
+            "timestamp": datetime.now().isoformat()
+        }, websocket)
+
+
+async def handle_clear_chat(websocket: WebSocket, data: Dict[str, Any]):
+    """Handle chat clearing request."""
+    try:
+        clear_type = data.get("clear_type", "current")  # "current", "all", "persona"
+        persona_name = data.get("persona_name")
+
+        success = False
+        message = ""
+
+        if clear_type == "current":
+            # Clear only current conversation
+            success = await conversation_memory.clear_current_conversation()
+            message = "Current chat cleared"
+        elif clear_type == "all":
+            # Clear all conversation memory including vector database
+            success = await conversation_memory.clear_all_memory()
+            message = "All conversation memory cleared (including database)"
+        elif clear_type == "persona" and persona_name:
+            # Clear memory for specific persona
+            success = await conversation_memory.clear_persona_memory(persona_name)
+            message = f"Cleared memory for persona: {persona_name}"
+        else:
+            await connection_manager.send_personal_message({
+                "type": "error",
+                "data": {"message": "Invalid clear_type or missing persona_name"},
+                "timestamp": datetime.now().isoformat()
+            }, websocket)
+            return
+
+        if success:
+            await connection_manager.send_personal_message({
+                "type": "chat_cleared",
+                "data": {
+                    "message": message,
+                    "clear_type": clear_type,
+                    "persona_name": persona_name
+                },
+                "timestamp": datetime.now().isoformat()
+            }, websocket)
+        else:
+            await connection_manager.send_personal_message({
+                "type": "error",
+                "data": {"message": f"Failed to clear chat: {clear_type}"},
+                "timestamp": datetime.now().isoformat()
+            }, websocket)
+
+    except Exception as e:
+        logger.error(f"Error clearing chat: {e}")
+        await connection_manager.send_personal_message({
+            "type": "error",
+            "data": {"message": f"Failed to clear chat: {str(e)}"},
             "timestamp": datetime.now().isoformat()
         }, websocket)
 
