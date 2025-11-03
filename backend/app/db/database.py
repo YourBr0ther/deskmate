@@ -1,10 +1,12 @@
 import logging
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy import text
 import os
 
 from app.db.qdrant import qdrant_manager
+# Import models to register them with SQLAlchemy
+from app.models import room_objects
 
 logger = logging.getLogger(__name__)
 
@@ -21,22 +23,28 @@ AsyncSessionLocal = sessionmaker(
     expire_on_commit=False,
 )
 
-Base = declarative_base()
+from app.db.base import Base
 
 
 async def init_db():
     logger.info("Initializing database connections...")
-    
+
     # Initialize Qdrant
     await qdrant_manager.connect()
-    
-    # Test PostgreSQL connection
+
+    # Test PostgreSQL connection and create tables
     try:
         async with engine.begin() as conn:
             await conn.execute(text("SELECT 1"))
         logger.info("PostgreSQL connection successful")
+
+        # Create all tables
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("Database tables created/verified")
+
     except Exception as e:
-        logger.error(f"PostgreSQL connection failed: {e}")
+        logger.error(f"PostgreSQL connection or table creation failed: {e}")
 
 
 async def check_postgres_health() -> bool:

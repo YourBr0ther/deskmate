@@ -41,7 +41,7 @@ DeskMate is a virtual AI companion that lives in a simulated room environment di
 
 ### Frontend
 - **Framework**: React 18+ with TypeScript
-- **Desktop Wrapper**: Electron
+- **Deployment**: Web-based (responsive design)
 - **State Management**: Zustand
 - **Styling**: TailwindCSS
 - **Grid Rendering**: HTML5 Canvas or React-Grid-Layout
@@ -310,17 +310,17 @@ System: [LLM generates]
 **Deliverables**:
 - PNG persona card reader (extract embedded JSON)
 - Persona validation and parsing
-- Basic Electron + React app
+- React web app with responsive design
 - Display persona portrait and name
-- Basic grid rendering (64x16)
+- Basic grid rendering (responsive 64x16 on desktop, 8x8 on mobile)
 - Expression system (with fallback to default)
 
 **Acceptance Criteria**:
 - Can load SillyTavern V2 persona cards
-- Portrait displays correctly at 400x400
-- Grid renders at 1920x480 (left 2/3)
+- Portrait displays correctly (responsive sizing)
+- Grid renders responsively (desktop: left 2/3, mobile: stacked)
 - Can switch between expressions
-- Window runs in kiosk mode at correct resolution
+- Web app accessible via browser with mobile support
 
 ### Phase 3: Room Environment & Objects (Week 5-6)
 **Goal**: Create interactive room with objects
@@ -527,7 +527,7 @@ System: [LLM generates]
 ### System Architecture
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Electron App (1920x480 Kiosk)                                  │
+│  React Web App (Responsive Design)                              │
 │  ┌──────────────────────┐  ┌──────────────────────────────────┐│
 │  │  Grid Canvas         │  │  Companion Panel                 ││
 │  │  (Room Renderer)     │  │  - Portrait                      ││

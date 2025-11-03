@@ -11,7 +11,7 @@ Provides endpoints for:
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query, Path as PathParam
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 import logging
 
 from ..services.persona_reader import persona_reader
@@ -241,4 +241,60 @@ async def validate_persona_data(persona_data: Dict[str, Any]):
         )
     except Exception as e:
         logger.error(f"Unexpected error validating persona: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/{persona_name}/image")
+async def get_persona_image(
+    persona_name: str = PathParam(..., description="Name of the persona to get image for"),
+    directory: Optional[str] = Query(None, description="Directory to search for personas")
+):
+    """
+    Get the PNG image file for a specific persona.
+
+    Args:
+        persona_name: Name of the character to find
+        directory: Optional directory path to search (defaults to data/personas)
+
+    Returns:
+        PNG image file
+    """
+    try:
+        # Default to the standard personas directory
+        if directory is None:
+            directory = "/data/personas"
+
+        directory_path = Path(directory).resolve()
+
+        if not directory_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Directory not found: {directory}"
+            )
+
+        # Find the PNG file by searching directory for matching persona
+        personas = persona_reader.load_personas_from_directory(str(directory_path))
+
+        matching_file = None
+        for persona in personas:
+            if persona.name.lower() == persona_name.lower():
+                matching_file = persona.metadata.file_path
+                break
+
+        if not matching_file or not Path(matching_file).exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Persona image not found: {persona_name}"
+            )
+
+        return FileResponse(
+            path=matching_file,
+            media_type="image/png",
+            filename=f"{persona_name}.png"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error serving persona image: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
