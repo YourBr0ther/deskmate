@@ -23,6 +23,27 @@ export interface GridObject {
   states?: Record<string, any>;
 }
 
+export interface StorageItem {
+  id: string;
+  name: string;
+  description: string;
+  type: 'decoration' | 'item' | 'tool';
+  default_size: {
+    width: number;
+    height: number;
+  };
+  properties: {
+    solid: boolean;
+    interactive: boolean;
+    movable: boolean;
+  };
+  sprite?: string;
+  color?: string;
+  stored_at: string;
+  created_by: string;
+  usage_count: number;
+}
+
 export interface Assistant {
   id: string;
   position: Position;
@@ -31,6 +52,11 @@ export interface Assistant {
   currentAction?: string;
   mood: 'happy' | 'neutral' | 'sad' | 'excited' | 'tired';
   status: 'active' | 'idle' | 'busy';
+  sitting_on_object_id?: string | null;
+  // Animation state
+  animatedPosition?: Position;
+  movementPath?: Position[];
+  movementSpeed?: number;
 }
 
 export interface RoomState {
@@ -46,6 +72,8 @@ export interface RoomState {
   assistant: Assistant;
   selectedObject?: string;
   viewMode: 'desktop' | 'mobile' | 'tablet';
+  storageItems: StorageItem[];
+  storageVisible: boolean;
 }
 
 export interface GridCell {

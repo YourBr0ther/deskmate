@@ -3,7 +3,7 @@
  */
 
 import { create } from 'zustand';
-import { RoomState, GridObject, Assistant, Position, GridMap } from '../types/room';
+import { RoomState, GridObject, Assistant, Position, GridMap, StorageItem } from '../types/room';
 
 interface RoomStore extends RoomState {
   // Actions
@@ -35,6 +35,13 @@ interface RoomStore extends RoomState {
   loadAssistantFromAPI: () => Promise<void>;
   moveAssistantToPosition: (x: number, y: number) => Promise<boolean>;
   sitOnFurniture: (furnitureId: string) => Promise<boolean>;
+
+  // Storage Management
+  toggleStorageVisibility: () => void;
+  loadStorageItems: () => Promise<void>;
+  addToStorage: (itemData: Partial<StorageItem>) => Promise<boolean>;
+  placeFromStorage: (itemId: string, position: Position) => Promise<boolean>;
+  moveObjectToStorage: (objectId: string) => Promise<boolean>;
 
   // Computed values
   getGridMap: () => GridMap;
@@ -107,7 +114,8 @@ const initialAssistant: Assistant = {
   position: { x: 32, y: 8 }, // Center of room
   isMoving: false,
   mood: 'neutral',
-  status: 'idle'
+  status: 'idle',
+  sitting_on_object_id: null
 };
 
 export const useRoomStore = create<RoomStore>((set, get) => ({
@@ -119,6 +127,8 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
   selectedObject: undefined,
   viewMode: 'desktop',
   draggedObject: null,
+  storageItems: [],
+  storageVisible: false,
 
   // Assistant actions
   setAssistantPosition: (position) =>
@@ -375,9 +385,13 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
             ...state.assistant,
             position: assistantData.position,
             isMoving: assistantData.movement.is_moving,
+            targetPosition: assistantData.movement.target,
+            movementPath: assistantData.movement.path?.map(([x, y]: [number, number]) => ({ x, y })),
+            movementSpeed: assistantData.movement.speed || 2,
             currentAction: assistantData.status.action,
             mood: assistantData.status.mood,
-            status: assistantData.status.mode === 'active' ? 'active' : 'idle'
+            status: assistantData.status.mode === 'active' ? 'active' : 'idle',
+            sitting_on_object_id: assistantData.interaction?.sitting_on
           }
         }));
       } else {
@@ -446,6 +460,112 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
       }
     } catch (error) {
       console.error('Error sitting on furniture:', error);
+      return false;
+    }
+  },
+
+  // Storage Management
+  toggleStorageVisibility: () =>
+    set((state) => ({
+      storageVisible: !state.storageVisible
+    })),
+
+  loadStorageItems: async () => {
+    try {
+      const response = await fetch('/api/room/storage');
+      if (response.ok) {
+        const items = await response.json();
+        set({ storageItems: items });
+        console.log(`Loaded ${items.length} storage items`);
+      } else {
+        console.error('Failed to load storage items:', response.statusText);
+      }
+    } catch (error) {
+      console.error('Error loading storage items:', error);
+    }
+  },
+
+  addToStorage: async (itemData) => {
+    try {
+      const response = await fetch('/api/room/storage', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(itemData),
+      });
+
+      if (response.ok) {
+        const newItem = await response.json();
+        set((state) => ({
+          storageItems: [...state.storageItems, newItem]
+        }));
+        console.log(`Added ${newItem.name} to storage`);
+        return true;
+      } else {
+        console.error('Failed to add item to storage:', response.statusText);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error adding item to storage:', error);
+      return false;
+    }
+  },
+
+  placeFromStorage: async (itemId, position) => {
+    try {
+      const response = await fetch(`/api/room/storage/${itemId}/place`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ x: position.x, y: position.y }),
+      });
+
+      if (response.ok) {
+        const placedObject = await response.json();
+
+        // Remove from storage and add to objects
+        set((state) => ({
+          storageItems: state.storageItems.filter(item => item.id !== itemId),
+          objects: [...state.objects, placedObject]
+        }));
+
+        console.log(`Placed ${placedObject.name} at (${position.x}, ${position.y})`);
+        return true;
+      } else {
+        console.error('Failed to place item from storage:', response.statusText);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error placing item from storage:', error);
+      return false;
+    }
+  },
+
+  moveObjectToStorage: async (objectId) => {
+    try {
+      const response = await fetch(`/api/room/objects/${objectId}/store`, {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        const storageItem = await response.json();
+
+        // Remove from objects and add to storage
+        set((state) => ({
+          objects: state.objects.filter(obj => obj.id !== objectId),
+          storageItems: [...state.storageItems, storageItem]
+        }));
+
+        console.log(`Moved ${storageItem.name} to storage`);
+        return true;
+      } else {
+        console.error('Failed to move object to storage:', response.statusText);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error moving object to storage:', error);
       return false;
     }
   },

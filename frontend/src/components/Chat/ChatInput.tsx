@@ -47,7 +47,7 @@ const ChatInput: React.FC = () => {
                 ? "Connecting..."
                 : isTyping
                 ? "Assistant is responding..."
-                : "Type your message... (Shift+Enter for new line)"
+                : "Type your message or /create [item description]... (Shift+Enter for new line)"
             }
             disabled={!isConnected}
             className="w-full resize-none bg-gray-800 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"

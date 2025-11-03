@@ -60,6 +60,9 @@ class PersonaReader:
             # Parse and validate the persona
             persona_card = self._parse_persona_data(persona_data)
 
+            # Detect and add expression images
+            self._detect_expressions(persona_card, file_path)
+
             # Create metadata
             metadata = self._create_metadata(file_path, persona_card.data)
 
@@ -208,6 +211,60 @@ class PersonaReader:
             return PersonaCard(**persona_data)
         except Exception as e:
             raise PersonaValidationError(f"Persona validation failed: {str(e)}")
+
+    def _detect_expressions(self, persona_card: PersonaCard, main_file_path: str) -> None:
+        """
+        Detect expression images in the same directory as the main persona file.
+
+        Looks for files named: {persona_name}_{expression}.png
+        Example: Alice_happy.png, Alice_sad.png, Alice_angry.png
+
+        Args:
+            persona_card: The persona card to add expressions to
+            main_file_path: Path to the main persona PNG file
+        """
+        try:
+            main_path = Path(main_file_path)
+            directory = main_path.parent
+            persona_name = persona_card.data.name.lower().replace(" ", "_")
+
+            # Common expression names to look for
+            expression_names = [
+                "happy", "sad", "angry", "surprised", "confused", "excited",
+                "tired", "worried", "neutral", "thinking", "embarrassed",
+                "annoyed", "sleepy", "curious", "proud", "disappointed"
+            ]
+
+            expressions = {}
+
+            # Add the main image as "default" expression
+            expressions["default"] = str(main_path)
+
+            # Look for expression files
+            for expression in expression_names:
+                # Try different naming conventions
+                possible_names = [
+                    f"{persona_name}_{expression}.png",
+                    f"{main_path.stem}_{expression}.png",
+                    f"{expression}.png"  # Just the expression name
+                ]
+
+                for name in possible_names:
+                    expression_path = directory / name
+                    if expression_path.exists() and expression_path.is_file():
+                        expressions[expression] = str(expression_path)
+                        logger.info(f"Found expression '{expression}' for {persona_card.data.name}: {expression_path}")
+                        break
+
+            # Update the persona data
+            persona_card.data.expressions = expressions
+
+            logger.info(f"Detected {len(expressions)} expressions for {persona_card.data.name}: {list(expressions.keys())}")
+
+        except Exception as e:
+            logger.warning(f"Failed to detect expressions for {persona_card.data.name}: {e}")
+            # Set default expression as fallback
+            persona_card.data.expressions = {"default": main_file_path}
 
     def _create_metadata(self, file_path: str, persona_data: PersonaData) -> PersonaMetadata:
         """Create metadata object for a loaded persona."""

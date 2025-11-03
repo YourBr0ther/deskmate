@@ -57,6 +57,7 @@ interface ChatState {
   sendMessage: (content: string) => void;
   sendAssistantMove: (x: number, y: number) => void;
   clearChat: (clearType: 'current' | 'all' | 'persona', personaName?: string) => void;
+  handleCommand: (command: string) => Promise<void>;
 
   // Model management
   setAvailableModels: (models: LLMModel[]) => void;
@@ -225,7 +226,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  sendMessage: (content: string) => {
+  sendMessage: async (content: string) => {
+    // Check if message is a command
+    if (content.startsWith('/')) {
+      await get().handleCommand(content);
+      return;
+    }
+
     const { websocket, isConnected } = get();
 
     if (!isConnected || !websocket) {
@@ -301,6 +308,82 @@ export const useChatStore = create<ChatState>((set, get) => ({
         persona_name: personaName
       }
     }));
+  },
+
+  handleCommand: async (command: string) => {
+    // Add user command to chat
+    get().addMessage({
+      role: 'user',
+      content: command,
+      timestamp: new Date().toISOString()
+    });
+
+    try {
+      // Get persona context
+      const getPersonaContext = () => {
+        try {
+          const personaState = usePersonaStore.getState();
+          if (personaState.selectedPersona) {
+            return personaState.selectedPersona.persona.data.name;
+          }
+        } catch (e) {
+          // Fallback for any errors
+        }
+        return null;
+      };
+
+      // Send command to backend
+      const response = await fetch('/api/chat/command', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: command,
+          persona_name: getPersonaContext()
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+
+        // Add success response to chat
+        get().addMessage({
+          role: 'assistant',
+          content: result.message,
+          timestamp: new Date().toISOString()
+        });
+
+        // If it's a create command, refresh storage
+        if (result.command === 'create' && result.created_object) {
+          // Import the room store and refresh storage items
+          const { useRoomStore } = await import('./roomStore');
+          const roomStore = useRoomStore.getState();
+          await roomStore.loadStorageItems();
+
+          console.log(`Created object: ${result.created_object.name}`);
+        }
+
+      } else {
+        const error = await response.json();
+        get().addMessage({
+          role: 'system',
+          content: `Command failed: ${error.detail}`,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+    } catch (error) {
+      console.error('Error processing command:', error);
+      get().addMessage({
+        role: 'system',
+        content: `Error processing command: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Clear current message
+    set({ currentMessage: '' });
   },
 }));
 

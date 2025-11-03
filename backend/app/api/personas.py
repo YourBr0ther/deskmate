@@ -247,13 +247,15 @@ async def validate_persona_data(persona_data: Dict[str, Any]):
 @router.get("/{persona_name}/image")
 async def get_persona_image(
     persona_name: str = PathParam(..., description="Name of the persona to get image for"),
+    expression: str = Query("default", description="Expression to display"),
     directory: Optional[str] = Query(None, description="Directory to search for personas")
 ):
     """
-    Get the PNG image file for a specific persona.
+    Get the PNG image file for a specific persona with optional expression.
 
     Args:
         persona_name: Name of the character to find
+        expression: Expression to display (default: "default")
         directory: Optional directory path to search (defaults to data/personas)
 
     Returns:
@@ -272,25 +274,41 @@ async def get_persona_image(
                 detail=f"Directory not found: {directory}"
             )
 
-        # Find the PNG file by searching directory for matching persona
+        # Find the persona
         personas = persona_reader.load_personas_from_directory(str(directory_path))
 
-        matching_file = None
+        matching_persona = None
         for persona in personas:
             if persona.name.lower() == persona_name.lower():
-                matching_file = persona.metadata.file_path
+                matching_persona = persona
                 break
 
-        if not matching_file or not Path(matching_file).exists():
+        if not matching_persona:
             raise HTTPException(
                 status_code=404,
-                detail=f"Persona image not found: {persona_name}"
+                detail=f"Persona not found: {persona_name}"
+            )
+
+        # Get the requested expression or fallback to default
+        expressions = matching_persona.persona.data.expressions
+        if expression in expressions:
+            image_path = expressions[expression]
+        elif "default" in expressions:
+            image_path = expressions["default"]
+        else:
+            # Ultimate fallback to main persona file
+            image_path = matching_persona.metadata.file_path
+
+        if not Path(image_path).exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Expression image not found: {expression}"
             )
 
         return FileResponse(
-            path=matching_file,
+            path=image_path,
             media_type="image/png",
-            filename=f"{persona_name}.png"
+            filename=f"{persona_name}_{expression}.png"
         )
 
     except HTTPException:
@@ -298,3 +316,138 @@ async def get_persona_image(
     except Exception as e:
         logger.error(f"Unexpected error serving persona image: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/{persona_name}/expressions")
+async def get_persona_expressions(
+    persona_name: str = PathParam(..., description="Name of the persona"),
+    directory: Optional[str] = Query(None, description="Directory to search for personas")
+):
+    """
+    Get available expressions for a persona.
+
+    Args:
+        persona_name: Name of the character
+        directory: Optional directory path to search
+
+    Returns:
+        Available expressions and URLs
+    """
+    try:
+        # Default to the standard personas directory
+        if directory is None:
+            directory = "/data/personas"
+
+        directory_path = Path(directory).resolve()
+
+        if not directory_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Directory not found: {directory}"
+            )
+
+        # Find the persona
+        personas = persona_reader.load_personas_from_directory(str(directory_path))
+
+        matching_persona = None
+        for persona in personas:
+            if persona.name.lower() == persona_name.lower():
+                matching_persona = persona
+                break
+
+        if not matching_persona:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Persona not found: {persona_name}"
+            )
+
+        expressions = matching_persona.persona.data.expressions
+        current_expression = matching_persona.persona.data.current_expression
+
+        return {
+            "persona_name": persona_name,
+            "current_expression": current_expression,
+            "available_expressions": list(expressions.keys()),
+            "expressions": {
+                name: f"/personas/{persona_name}/image?expression={name}"
+                for name in expressions.keys()
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting persona expressions: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get expressions")
+
+
+@router.post("/{persona_name}/expression")
+async def set_persona_expression(
+    expression_data: Dict[str, str],
+    persona_name: str = PathParam(..., description="Name of the persona"),
+    directory: Optional[str] = Query(None, description="Directory to search for personas")
+):
+    """
+    Set the current expression for a persona.
+
+    Args:
+        persona_name: Name of the character
+        expression_data: Dictionary containing "expression" key
+        directory: Optional directory path to search
+
+    Returns:
+        Updated expression info
+    """
+    try:
+        expression = expression_data.get("expression")
+        if not expression:
+            raise HTTPException(status_code=400, detail="Expression is required")
+
+        # Default to the standard personas directory
+        if directory is None:
+            directory = "/data/personas"
+
+        directory_path = Path(directory).resolve()
+
+        if not directory_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Directory not found: {directory}"
+            )
+
+        # Find the persona
+        personas = persona_reader.load_personas_from_directory(str(directory_path))
+
+        matching_persona = None
+        for persona in personas:
+            if persona.name.lower() == persona_name.lower():
+                matching_persona = persona
+                break
+
+        if not matching_persona:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Persona not found: {persona_name}"
+            )
+
+        expressions = matching_persona.persona.data.expressions
+        if expression not in expressions:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Expression '{expression}' not available. Available: {list(expressions.keys())}"
+            )
+
+        # Update current expression
+        matching_persona.persona.data.current_expression = expression
+
+        return {
+            "persona_name": persona_name,
+            "expression": expression,
+            "image_url": f"/personas/{persona_name}/image?expression={expression}"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error setting persona expression: {e}")
+        raise HTTPException(status_code=500, detail="Failed to set expression")

@@ -45,6 +45,10 @@ class PersonaData(BaseModel):
     character_version: str = Field(default="", description="Version identifier")
     avatar: str = Field(default="none", description="Avatar reference")
 
+    # Expression system
+    expressions: Dict[str, str] = Field(default_factory=dict, description="Expression name to image path mapping")
+    current_expression: str = Field(default="default", description="Currently active expression")
+
     # Extensions and advanced features
     extensions: Dict[str, Any] = Field(default_factory=dict, description="Extensions/plugins data")
     character_book: Optional[CharacterBook] = Field(None, description="Lorebook/world info")

@@ -13,9 +13,11 @@ from fastapi import APIRouter, HTTPException, Body
 from fastapi.responses import StreamingResponse
 import logging
 import json
+import uuid
 from datetime import datetime
 
 from app.services.llm_manager import llm_manager, ChatMessage, LLMProvider
+from app.services.room_service import room_service
 
 logger = logging.getLogger(__name__)
 
@@ -321,3 +323,146 @@ async def simple_chat(chat_data: Dict[str, Any] = Body(...)):
     except Exception as e:
         logger.error(f"Error in simple chat: {e}")
         raise HTTPException(status_code=500, detail="Failed to process chat message")
+
+
+@router.post("/command")
+async def process_command(command_data: Dict[str, Any] = Body(...)):
+    """
+    Process chat commands like /create.
+
+    Body:
+        {
+            "message": "/create a red coffee mug",
+            "persona_name": "optional persona context"
+        }
+    """
+    try:
+        message = command_data.get("message", "").strip()
+        persona_name = command_data.get("persona_name")
+
+        if not message:
+            raise HTTPException(status_code=400, detail="Message is required")
+
+        # Check if it's a command
+        if not message.startswith("/"):
+            raise HTTPException(status_code=400, detail="Not a command - commands must start with /")
+
+        # Parse command and arguments
+        parts = message[1:].split(" ", 1)  # Remove / and split
+        command = parts[0].lower()
+        args = parts[1] if len(parts) > 1 else ""
+
+        if command == "create":
+            return await _handle_create_command(args, persona_name)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown command: /{command}")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error processing command: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process command")
+
+
+async def _handle_create_command(description: str, persona_name: Optional[str] = None) -> Dict[str, Any]:
+    """Handle the /create command to generate new objects."""
+    if not description:
+        raise HTTPException(status_code=400, detail="Description is required for /create command")
+
+    try:
+        # Create a system prompt for object generation
+        system_prompt = """You are an object generator for a virtual room. Given a description, create a JSON object with the following properties:
+
+{
+  "name": "Short object name (2-4 words)",
+  "description": "Detailed description of the object",
+  "type": "decoration|item|tool",
+  "default_size": {"width": 1-3, "height": 1-3},
+  "color_scheme": "color name like 'red', 'blue', 'wood', 'metal'",
+  "sprite_name": "suggested filename like 'coffee_mug.png'"
+}
+
+Make the object realistic and appropriate for a bedroom/living space. Keep sizes small (1-3 cells).
+Respond ONLY with valid JSON."""
+
+        # Generate object using LLM
+        messages = [
+            ChatMessage(role="system", content=system_prompt),
+            ChatMessage(role="user", content=f"Create an object: {description}")
+        ]
+
+        response = await llm_manager.chat_completion(
+            messages=messages,
+            temperature=0.3  # Lower temperature for more consistent results
+        )
+
+        if response.error:
+            raise HTTPException(status_code=500, detail=f"LLM error: {response.error}")
+
+        # Parse the JSON response
+        try:
+            # Clean up the response - remove markdown code blocks if present
+            content = response.content.strip()
+            if content.startswith("```json"):
+                content = content[7:]
+            if content.startswith("```"):
+                content = content[3:]
+            if content.endswith("```"):
+                content = content[:-3]
+            content = content.strip()
+
+            logger.info(f"LLM response for object creation: {content}")
+            object_data = json.loads(content)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse LLM response as JSON: {response.content}")
+            # Create a fallback object if JSON parsing fails
+            object_data = {
+                "name": f"Generated Item",
+                "description": f"A {description} created by the system",
+                "type": "item",
+                "default_size": {"width": 1, "height": 1},
+                "color_scheme": "gray",
+                "sprite_name": "generic_item.png"
+            }
+
+        # Validate required fields
+        required_fields = ["name", "description", "type", "default_size", "color_scheme"]
+        for field in required_fields:
+            if field not in object_data:
+                raise HTTPException(status_code=500, detail=f"Generated object missing field: {field}")
+
+        # Generate unique ID and add metadata
+        object_id = f"created_{uuid.uuid4().hex[:8]}"
+        storage_data = {
+            "id": object_id,
+            "name": object_data["name"],
+            "description": object_data["description"],
+            "type": object_data["type"],
+            "default_size": {
+                "width": object_data["default_size"]["width"],
+                "height": object_data["default_size"]["height"]
+            },
+            "color": object_data["color_scheme"],
+            "sprite": object_data.get("sprite_name"),
+            "created_by": "user"
+        }
+
+        if persona_name:
+            storage_data["description"] += f" (Created by {persona_name})"
+
+        # Add to storage using room service
+        storage_item = await room_service.add_to_storage(storage_data)
+
+        return {
+            "success": True,
+            "command": "create",
+            "description": description,
+            "created_object": storage_item,
+            "message": f"Created '{storage_item['name']}' and added to storage closet!"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in create command: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create object")

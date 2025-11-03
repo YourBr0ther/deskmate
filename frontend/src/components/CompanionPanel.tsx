@@ -10,10 +10,14 @@ const CompanionPanel: React.FC = () => {
   const {
     personas,
     selectedPersona,
+    currentExpression,
+    availableExpressions,
     isLoading,
     error,
     loadPersonas,
     loadPersonaByName,
+    loadPersonaExpressions,
+    setPersonaExpression,
     clearError
   } = usePersonaStore();
 
@@ -24,8 +28,16 @@ const CompanionPanel: React.FC = () => {
     loadPersonas();
   }, [loadPersonas]);
 
-  const handlePersonaSelect = (personaName: string) => {
-    loadPersonaByName(personaName);
+  const handlePersonaSelect = async (personaName: string) => {
+    await loadPersonaByName(personaName);
+    // Load expressions for the selected persona
+    await loadPersonaExpressions(personaName);
+  };
+
+  const handleExpressionChange = async (expression: string) => {
+    if (selectedPersona) {
+      await setPersonaExpression(selectedPersona.persona.data.name, expression);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -59,10 +71,10 @@ const CompanionPanel: React.FC = () => {
         <div className="portrait-frame mx-auto w-64 h-64 max-w-full">
           {selectedPersona ? (
             <div className="w-full h-full bg-gradient-to-b from-gray-800 to-gray-900 flex items-center justify-center relative overflow-hidden rounded-lg">
-              {/* Use actual persona PNG as background */}
+              {/* Use actual persona PNG with current expression */}
               <img
-                src={`/api/personas/${encodeURIComponent(selectedPersona.persona.data.name)}/image`}
-                alt={selectedPersona.persona.data.name}
+                src={`/api/personas/${encodeURIComponent(selectedPersona.persona.data.name)}/image?expression=${currentExpression}`}
+                alt={`${selectedPersona.persona.data.name} - ${currentExpression}`}
                 className="w-full h-full object-cover"
                 onError={(e) => {
                   // Fallback to character initial if image fails to load
@@ -121,6 +133,29 @@ const CompanionPanel: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Expression Controls */}
+      {selectedPersona && availableExpressions.length > 1 && (
+        <div className="p-4 flex-shrink-0 border-t border-panel-border">
+          <h3 className="text-sm font-semibold mb-2">Expression</h3>
+          <div className="flex flex-wrap gap-2">
+            {availableExpressions.map((expression) => (
+              <button
+                key={expression}
+                onClick={() => handleExpressionChange(expression)}
+                className={`px-3 py-1 text-xs rounded border transition-colors ${
+                  currentExpression === expression
+                    ? 'bg-blue-900/50 border-blue-700 text-blue-200'
+                    : 'bg-gray-800/50 border-gray-700 hover:bg-gray-700/50 text-gray-300'
+                }`}
+                title={`Switch to ${expression} expression`}
+              >
+                {expression}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Persona Selection */}
       <div className="flex-1 p-4 overflow-y-auto">

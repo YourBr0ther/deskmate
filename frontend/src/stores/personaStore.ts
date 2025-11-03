@@ -9,18 +9,24 @@ interface PersonaStore {
   // State
   personas: PersonaSummary[];
   selectedPersona: LoadedPersona | null;
+  currentExpression: string;
+  availableExpressions: string[];
   isLoading: boolean;
   error: string | null;
 
   // Actions
   setPersonas: (personas: PersonaSummary[]) => void;
   setSelectedPersona: (persona: LoadedPersona | null) => void;
+  setCurrentExpression: (expression: string) => void;
+  setAvailableExpressions: (expressions: string[]) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
 
   // API calls
   loadPersonas: () => Promise<void>;
   loadPersonaByName: (name: string) => Promise<void>;
+  loadPersonaExpressions: (name: string) => Promise<void>;
+  setPersonaExpression: (name: string, expression: string) => Promise<void>;
   clearError: () => void;
 }
 
@@ -41,12 +47,16 @@ export const usePersonaStore = create<PersonaStore>((set, get) => ({
   // Initial state
   personas: [],
   selectedPersona: null,
+  currentExpression: 'default',
+  availableExpressions: ['default'],
   isLoading: false,
   error: null,
 
   // Actions
   setPersonas: (personas) => set({ personas }),
   setSelectedPersona: (persona) => set({ selectedPersona: persona }),
+  setCurrentExpression: (expression) => set({ currentExpression: expression }),
+  setAvailableExpressions: (expressions) => set({ availableExpressions: expressions }),
   setLoading: (loading) => set({ isLoading: loading }),
   setError: (error) => set({ error }),
   clearError: () => set({ error: null }),
@@ -137,6 +147,60 @@ export const usePersonaStore = create<PersonaStore>((set, get) => ({
       setSelectedPersona(null);
     } finally {
       setLoading(false);
+    }
+  },
+
+  // Load available expressions for a persona
+  loadPersonaExpressions: async (name: string) => {
+    const { setError, setAvailableExpressions, setCurrentExpression } = get();
+
+    try {
+      setError(null);
+      const response = await fetch(`${getApiBaseUrl()}/personas/${encodeURIComponent(name)}/expressions`);
+
+      if (!response.ok) {
+        throw new Error(`Failed to load expressions: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      setAvailableExpressions(data.available_expressions || ['default']);
+      setCurrentExpression(data.current_expression || 'default');
+
+    } catch (error) {
+      console.error('Error loading persona expressions:', error);
+      setError(error instanceof Error ? error.message : 'Failed to load expressions');
+      // Set defaults on error
+      setAvailableExpressions(['default']);
+      setCurrentExpression('default');
+    }
+  },
+
+  // Set current expression for a persona
+  setPersonaExpression: async (name: string, expression: string) => {
+    const { setError, setCurrentExpression } = get();
+
+    try {
+      setError(null);
+      const response = await fetch(`${getApiBaseUrl()}/personas/${encodeURIComponent(name)}/expression`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          expression: expression
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to set expression: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      setCurrentExpression(data.expression);
+
+    } catch (error) {
+      console.error('Error setting persona expression:', error);
+      setError(error instanceof Error ? error.message : 'Failed to set expression');
     }
   },
 }));

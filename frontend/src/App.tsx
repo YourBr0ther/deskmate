@@ -7,6 +7,7 @@ import { usePersonaStore } from './stores/personaStore';
 import { useRoomStore } from './stores/roomStore';
 import Grid from './components/Grid';
 import ChatWindow from './components/Chat/ChatWindow';
+import StorageCloset from './components/StorageCloset';
 
 const App: React.FC = () => {
   const [isMobile, setIsMobile] = useState(false);
@@ -115,10 +116,11 @@ const App: React.FC = () => {
         {/* Content Area */}
         <div className="flex-1 overflow-hidden">
           {activeTab === 'room' ? (
-            <div className="h-full p-4">
+            <div className="h-full p-4 relative">
               <div className="mobile-grid-container">
                 <Grid />
               </div>
+              <StorageCloset />
             </div>
           ) : (
             <ChatWindow />
@@ -210,7 +212,7 @@ const App: React.FC = () => {
         )}
 
         {/* Room Grid - Properly sized */}
-        <div className="flex-1 p-4 overflow-auto">
+        <div className="flex-1 p-4 overflow-auto relative">
           <div className="desktop-grid-container">
             <div className="relative">
               <Grid />
@@ -233,6 +235,7 @@ const App: React.FC = () => {
               </div>
             </div>
           </div>
+          <StorageCloset />
         </div>
       </div>
 
