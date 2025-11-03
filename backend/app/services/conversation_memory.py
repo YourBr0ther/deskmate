@@ -470,13 +470,19 @@ Summary:"""
 
             # If we need more messages, get from vector DB
             if len(all_messages) < limit:
-                # Search for more messages from this conversation
-                results = await qdrant_manager.search_memories(
-                    collection="memories",
-                    query_vector=[0.1] * 1536,  # Dummy query for recent messages
-                    limit=limit * 2,  # Get extra to filter
-                    score_threshold=0.0
-                )
+                try:
+                    # Search for more messages from this conversation
+                    # Use a small dummy vector for retrieving recent messages by timestamp
+                    dummy_vector = [0.0] * 1536  # All zeros is more efficient than random values
+                    results = await qdrant_manager.search_memories(
+                        collection="memories",
+                        query_vector=dummy_vector,
+                        limit=max(50, limit * 2),  # Get extra to filter, minimum 50
+                        score_threshold=0.0
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to retrieve vector messages for persona {persona_name}: {e}")
+                    results = []
 
                 for result in results:
                     payload = result["payload"]

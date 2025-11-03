@@ -1,12 +1,15 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 import logging
 from contextlib import asynccontextmanager
 
-from app.api import health, personas, room, assistant, chat, websocket, conversation
-from app.db.database import init_db
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-logging.basicConfig(level=logging.INFO)
+from app.api import health, personas, room, assistant, chat, websocket, conversation
+from app.config import config
+from app.db.database import init_db
+from app.middleware import RateLimitMiddleware
+
+logging.basicConfig(level=getattr(logging, config.log_level))
 logger = logging.getLogger(__name__)
 
 
@@ -19,17 +22,21 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="DeskMate API",
-    description="Virtual AI Companion Backend",
-    version="0.1.0",
+    title=config.title,
+    description=config.description,
+    version=config.version,
     lifespan=lifespan
 )
 
+# Add middleware (order matters - rate limiting first, then CORS)
+app.add_middleware(RateLimitMiddleware)
+
+# CORS settings from configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=config.security.allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 

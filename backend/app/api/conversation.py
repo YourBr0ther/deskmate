@@ -157,8 +157,28 @@ async def initialize_conversation_with_persona(
     request: Dict[str, Any] = Body(...)
 ) -> Dict[str, Any]:
     """Initialize conversation for a specific persona."""
+    # Input validation
+    if not isinstance(request, dict):
+        return {
+            "status": "error",
+            "error": "Request body must be a JSON object",
+            "conversation_id": None,
+            "messages": [],
+            "count": 0
+        }
+
     persona_name = request.get("persona_name")
     load_history = request.get("load_history", True)
+
+    # Validate persona_name if provided
+    if persona_name is not None and (not isinstance(persona_name, str) or not persona_name.strip()):
+        return {
+            "status": "error",
+            "error": "persona_name must be a non-empty string",
+            "conversation_id": None,
+            "messages": [],
+            "count": 0
+        }
 
     try:
         conversation_id = await conversation_memory.initialize_conversation(

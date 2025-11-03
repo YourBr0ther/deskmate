@@ -15,6 +15,7 @@ import json
 import asyncio
 from datetime import datetime
 
+from app.config import config
 from app.services.llm_manager import llm_manager, ChatMessage
 from app.services.assistant_service import assistant_service
 from app.services.brain_council import brain_council
@@ -153,20 +154,51 @@ async def websocket_endpoint(websocket: WebSocket):
                 }, websocket)
 
     except WebSocketDisconnect:
+        logger.info("Client disconnected normally")
         connection_manager.disconnect(websocket)
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+        logger.error(f"Unexpected WebSocket error: {e}")
+        logger.error(f"Exception type: {type(e)}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         connection_manager.disconnect(websocket)
 
 
 async def handle_chat_message(websocket: WebSocket, data: Dict[str, Any]):
     """Handle incoming chat message with Brain Council integration."""
     try:
-        user_message = data.get("message", "").strip()
+        # Input validation
+        if not isinstance(data, dict):
+            await connection_manager.send_personal_message({
+                "type": "error",
+                "data": {"message": "Invalid message format"},
+                "timestamp": datetime.now().isoformat()
+            }, websocket)
+            return
+
+        user_message = data.get("message", "")
+        if not isinstance(user_message, str):
+            await connection_manager.send_personal_message({
+                "type": "error",
+                "data": {"message": "Message must be a string"},
+                "timestamp": datetime.now().isoformat()
+            }, websocket)
+            return
+
+        user_message = user_message.strip()
         if not user_message:
             await connection_manager.send_personal_message({
                 "type": "error",
                 "data": {"message": "Empty message"},
+                "timestamp": datetime.now().isoformat()
+            }, websocket)
+            return
+
+        # Limit message length for safety
+        if len(user_message) > config.security.max_message_length:
+            await connection_manager.send_personal_message({
+                "type": "error",
+                "data": {"message": f"Message too long (max {config.security.max_message_length:,} characters)"},
                 "timestamp": datetime.now().isoformat()
             }, websocket)
             return
@@ -249,6 +281,11 @@ async def handle_chat_message(websocket: WebSocket, data: Dict[str, Any]):
 
     except Exception as e:
         logger.error(f"Error handling chat message: {e}")
+        logger.error(f"Exception type: {type(e)}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+
+        # Send error to client
         await connection_manager.send_personal_message({
             "type": "error",
             "data": {"message": f"Failed to process chat: {str(e)}"},

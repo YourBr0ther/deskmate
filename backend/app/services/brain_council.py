@@ -166,14 +166,34 @@ Creator: {persona_context.get('creator', 'Unknown')}
         # Create spatial awareness description
         visible_objects = []
         for obj in context["room"]["objects"]:
-            # Calculate distance from assistant
-            obj_x = obj["position"]["x"]
-            obj_y = obj["position"]["y"]
-            distance = abs(obj_x - context["assistant"]["position"]["x"]) + abs(obj_y - context["assistant"]["position"]["y"])
-            if distance <= 10:  # Within reasonable "view" distance
-                states = context["room"]["object_states"].get(obj["id"], {})
-                state_desc = ", ".join([f"{k}:{v}" for k, v in states.items()]) if states else "default"
-                visible_objects.append(f"- {obj['name']} ({obj['id']}) at ({obj_x}, {obj_y}) - {state_desc}")
+            try:
+                # Safely extract position - handle both nested and flat formats
+                if isinstance(obj.get("position"), dict):
+                    obj_x = obj["position"]["x"]
+                    obj_y = obj["position"]["y"]
+                elif "position_x" in obj and "position_y" in obj:
+                    # Fallback for flat format
+                    obj_x = obj["position_x"]
+                    obj_y = obj["position_y"]
+                else:
+                    logger.warning(f"Object {obj.get('id', 'unknown')} has invalid position format: {obj}")
+                    continue
+
+                # Calculate distance from assistant
+                assistant_pos = context["assistant"]["position"]
+                distance = abs(obj_x - assistant_pos["x"]) + abs(obj_y - assistant_pos["y"])
+
+                if distance <= 10:  # Within reasonable "view" distance
+                    states = context["room"]["object_states"].get(obj["id"], {})
+                    state_desc = ", ".join([f"{k}:{v}" for k, v in states.items()]) if states else "default"
+                    visible_objects.append(f"- {obj['name']} ({obj['id']}) at ({obj_x}, {obj_y}) - {state_desc}")
+            except KeyError as e:
+                logger.error(f"KeyError processing object {obj.get('id', 'unknown')}: {e}")
+                logger.error(f"Object structure: {obj}")
+                continue
+            except Exception as e:
+                logger.error(f"Error processing object {obj.get('id', 'unknown')}: {e}")
+                continue
 
         prompt = f"""
 You are the Brain Council for a virtual AI companion. Process this user request using 5 council perspectives:
