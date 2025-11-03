@@ -6,7 +6,6 @@ import React, { useEffect, useState } from 'react';
 import { usePersonaStore } from './stores/personaStore';
 import { useRoomStore } from './stores/roomStore';
 import Grid from './components/Grid';
-import CompanionPanel from './components/CompanionPanel';
 import ChatWindow from './components/Chat/ChatWindow';
 
 const App: React.FC = () => {
@@ -248,8 +247,24 @@ const App: React.FC = () => {
         {selectedPersona && (
           <div className="flex-shrink-0 p-4 border-b border-gray-700">
             <div className="flex items-center space-x-4">
-              <div className="w-16 h-16 bg-gradient-to-b from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
-                <CompanionPanel />
+              <div className="w-16 h-16 bg-gradient-to-b from-blue-500 to-blue-600 rounded-lg flex items-center justify-center overflow-hidden relative">
+                <img
+                  src={`/api/personas/${encodeURIComponent(selectedPersona.persona.data.name)}/image`}
+                  alt={selectedPersona.persona.data.name}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    // Fallback to character initial if image fails to load
+                    e.currentTarget.style.display = 'none';
+                    const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                    if (fallback) {
+                      fallback.style.display = 'flex';
+                    }
+                  }}
+                />
+                {/* Fallback character initial (hidden by default) */}
+                <div className="absolute inset-0 flex items-center justify-center text-2xl text-white font-bold" style={{display: 'none'}}>
+                  {selectedPersona.persona.data.name.charAt(0)}
+                </div>
               </div>
               <div className="flex-1">
                 <h3 className="font-semibold">{selectedPersona.persona.data.name}</h3>
