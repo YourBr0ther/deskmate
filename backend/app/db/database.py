@@ -6,7 +6,7 @@ import os
 
 from app.db.qdrant import qdrant_manager
 # Import models to register them with SQLAlchemy
-from app.models import room_objects
+from app.models import room_objects, assistant
 
 logger = logging.getLogger(__name__)
 

@@ -31,6 +31,11 @@ interface RoomStore extends RoomState {
   setObjectState: (objectId: string, key: string, value: string) => Promise<boolean>;
   getObjectStates: (objectId: string) => Promise<Record<string, string> | null>;
 
+  // Assistant Management
+  loadAssistantFromAPI: () => Promise<void>;
+  moveAssistantToPosition: (x: number, y: number) => Promise<boolean>;
+  sitOnFurniture: (furnitureId: string) => Promise<boolean>;
+
   // Computed values
   getGridMap: () => GridMap;
   getGridDimensions: () => { width: number; height: number };
@@ -354,6 +359,94 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
     } catch (error) {
       console.error('Error getting object states:', error);
       return null;
+    }
+  },
+
+  // Assistant API calls
+  loadAssistantFromAPI: async () => {
+    try {
+      const response = await fetch('/api/assistant/state');
+      if (response.ok) {
+        const assistantData = await response.json();
+
+        // Update assistant state
+        set((state) => ({
+          assistant: {
+            ...state.assistant,
+            position: assistantData.position,
+            isMoving: assistantData.movement.is_moving,
+            currentAction: assistantData.status.action,
+            mood: assistantData.status.mood,
+            status: assistantData.status.mode === 'active' ? 'active' : 'idle'
+          }
+        }));
+      } else {
+        console.error('Failed to load assistant from API');
+      }
+    } catch (error) {
+      console.error('Error loading assistant:', error);
+    }
+  },
+
+  moveAssistantToPosition: async (x, y) => {
+    try {
+      const response = await fetch('/api/assistant/move', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ target: { x, y } }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          // Update local assistant state
+          await get().loadAssistantFromAPI();
+          console.log(`Assistant moved to (${x}, ${y})`);
+          return true;
+        } else {
+          console.error('Failed to move assistant:', result.error);
+          return false;
+        }
+      } else {
+        console.error('Assistant move request failed:', response.statusText);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error moving assistant:', error);
+      return false;
+    }
+  },
+
+  sitOnFurniture: async (furnitureId) => {
+    try {
+      const response = await fetch('/api/assistant/sit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ furniture_id: furnitureId }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          // Update local assistant state
+          await get().loadAssistantFromAPI();
+          console.log(`Assistant sitting on ${furnitureId}`);
+          return true;
+        } else {
+          console.error('Failed to sit on furniture:', result.error);
+          return false;
+        }
+      } else {
+        console.error('Sit request failed:', response.statusText);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error sitting on furniture:', error);
+      return false;
     }
   },
 }));

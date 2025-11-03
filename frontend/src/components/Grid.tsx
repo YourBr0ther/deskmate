@@ -17,6 +17,8 @@ const Grid: React.FC = () => {
     selectedObject,
     moveAssistant,
     loadObjectsFromAPI,
+    loadAssistantFromAPI,
+    moveAssistantToPosition,
     draggedObject,
     setDraggedObject,
     moveObjectToPosition,
@@ -26,10 +28,11 @@ const Grid: React.FC = () => {
 
   const gridMap = useMemo(() => getGridMap(), [getGridMap]);
 
-  // Load objects from API on component mount
+  // Load objects and assistant from API on component mount
   useEffect(() => {
     loadObjectsFromAPI();
-  }, [loadObjectsFromAPI]);
+    loadAssistantFromAPI();
+  }, [loadObjectsFromAPI, loadAssistantFromAPI]);
 
   const handleCellClick = useCallback(async (position: Position) => {
     // If we're dragging an object, try to drop it here
@@ -71,11 +74,15 @@ const Grid: React.FC = () => {
       // Move assistant to clicked position if it's walkable
       const cell = gridMap[position.y]?.[position.x];
       if (cell && cell.walkable && !cell.occupied) {
-        moveAssistant(position);
+        // Use pathfinding to move assistant
+        const success = await moveAssistantToPosition(position.x, position.y);
+        if (success) {
+          console.log(`Assistant moved to (${position.x}, ${position.y})`);
+        }
         selectObject(undefined);
       }
     }
-  }, [objects, gridMap, selectObject, moveAssistant, draggedObject, setDraggedObject, moveObjectToPosition]);
+  }, [objects, gridMap, selectObject, moveAssistant, draggedObject, setDraggedObject, moveObjectToPosition, moveAssistantToPosition]);
 
   const handleCellRightClick = useCallback(async (e: React.MouseEvent, position: Position) => {
     e.preventDefault(); // Prevent context menu
