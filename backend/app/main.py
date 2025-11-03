@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 from contextlib import asynccontextmanager
 
-from app.api import health
+from app.api import health, personas
 from app.db.database import init_db
 
 logging.basicConfig(level=logging.INFO)
@@ -34,3 +34,4 @@ app.add_middleware(
 )
 
 app.include_router(health.router, tags=["health"])
+app.include_router(personas.router)
