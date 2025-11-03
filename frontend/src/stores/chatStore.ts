@@ -160,7 +160,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const ws = new WebSocket(WEBSOCKET_URL);
 
       ws.onopen = () => {
-        console.log('WebSocket connected');
+        // WebSocket connected successfully
         set({
           isConnected: true,
           websocket: ws,
@@ -178,7 +178,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       };
 
       ws.onclose = () => {
-        console.log('WebSocket disconnected');
+        // WebSocket disconnected
         set({ isConnected: false, websocket: null });
 
         // Attempt reconnection
@@ -260,7 +260,7 @@ function handleWebSocketMessage(message: any) {
 
   switch (type) {
     case 'connection_established':
-      console.log('Connection established:', data.message);
+      // Connection established successfully
       store.setCurrentModel(data.current_model);
       break;
 
@@ -323,7 +323,7 @@ function handleWebSocketMessage(message: any) {
 
     case 'assistant_state':
       // Handle assistant state updates (could be used for visual updates)
-      console.log('Assistant state updated:', data);
+      // Assistant state updated
       break;
 
     case 'error':
@@ -340,6 +340,6 @@ function handleWebSocketMessage(message: any) {
       break;
 
     default:
-      console.log('Unknown message type:', type, data);
+      // Unknown message type received
   }
 }

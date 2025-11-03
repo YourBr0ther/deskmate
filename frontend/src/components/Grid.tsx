@@ -44,9 +44,9 @@ const Grid: React.FC = () => {
       if (draggedObj) {
         const success = await moveObjectToPosition(draggedObject, position);
         if (success) {
-          console.log(`Moved ${draggedObject} to (${position.x}, ${position.y})`);
+          // Object moved successfully
         } else {
-          console.log(`Failed to move ${draggedObject} - position occupied or invalid`);
+          // Failed to move object - position occupied or invalid
         }
       }
       setDraggedObject(null);
@@ -69,9 +69,9 @@ const Grid: React.FC = () => {
 
       if (isMovable) {
         setDraggedObject(clickedObject.id);
-        console.log(`Started dragging ${clickedObject.id}`);
+        // Started dragging object
       } else {
-        console.log(`Selected non-movable object ${clickedObject.id}`);
+        // Selected non-movable object
       }
     } else {
       // Move assistant to clicked position if it's walkable
@@ -80,12 +80,12 @@ const Grid: React.FC = () => {
         // Use WebSocket if connected, otherwise fall back to direct API
         if (isConnected) {
           sendAssistantMove(position.x, position.y);
-          console.log(`Sent assistant move request via WebSocket to (${position.x}, ${position.y})`);
+          // Sent assistant move request via WebSocket
         } else {
           // Fallback to direct API call
           const success = await moveAssistantToPosition(position.x, position.y);
           if (success) {
-            console.log(`Assistant moved to (${position.x}, ${position.y}) via API`);
+            // Assistant moved successfully via API
           }
         }
         selectObject(undefined);
