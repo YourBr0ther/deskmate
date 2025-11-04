@@ -128,7 +128,8 @@ class BrainCouncil:
                     },
                     "facing": assistant_state.facing_direction,
                     "action": assistant_state.current_action,
-                    "mood": assistant_state.mood
+                    "mood": assistant_state.mood,
+                    "holding_object_id": assistant_state.holding_object_id
                 },
                 "room": {
                     "objects": objects,
@@ -143,7 +144,7 @@ class BrainCouncil:
             import traceback
             logger.error(f"Full traceback: {traceback.format_exc()}")
             return {
-                "assistant": {"position": {"x": 32, "y": 8}, "facing": "right", "action": "idle", "mood": "neutral"},
+                "assistant": {"position": {"x": 32, "y": 8}, "facing": "right", "action": "idle", "mood": "neutral", "holding_object_id": None},
                 "room": {"objects": [], "object_states": {}, "timestamp": datetime.now().isoformat()}
             }
 
@@ -186,7 +187,12 @@ Creator: {persona_context.get('creator', 'Unknown')}
                 if distance <= 10:  # Within reasonable "view" distance
                     states = context["room"]["object_states"].get(obj["id"], {})
                     state_desc = ", ".join([f"{k}:{v}" for k, v in states.items()]) if states else "default"
-                    visible_objects.append(f"- {obj['name']} ({obj['id']}) at ({obj_x}, {obj_y}) - {state_desc}")
+
+                    # Add movability information
+                    is_movable = obj.get("properties", {}).get("movable", False)
+                    movable_desc = " [MOVABLE]" if is_movable else ""
+
+                    visible_objects.append(f"- {obj['name']} ({obj['id']}) at ({obj_x}, {obj_y}) - {state_desc}{movable_desc}")
             except KeyError as e:
                 logger.error(f"KeyError processing object {obj.get('id', 'unknown')}: {e}")
                 logger.error(f"Object structure: {obj}")
@@ -205,6 +211,7 @@ USER MESSAGE: "{user_message}"
 CURRENT CONTEXT:
 Assistant Position: ({context["assistant"]["position"]["x"]}, {context["assistant"]["position"]["y"]})
 Assistant Status: {context["assistant"]["action"]}, facing {context["assistant"]["facing"]}, mood: {context["assistant"]["mood"]}
+Holding: {context["assistant"]["holding_object_id"] or "nothing"}
 
 VISIBLE OBJECTS:
 {chr(10).join(visible_objects) if visible_objects else "- No objects in immediate vicinity"}
@@ -215,11 +222,26 @@ COUNCIL PERSPECTIVES:
 
 2. MEMORY KEEPER: What relevant context from past interactions should inform this response? Any patterns or preferences to remember?
 
-3. SPATIAL REASONER: What objects are visible and reachable? What movement or positioning would make sense? Are there spatial constraints?
+3. SPATIAL REASONER: Analyze the spatial environment and object relationships:
+   - What objects are visible and within reach (distance ≤ 2)?
+   - Which objects are movable and could be picked up?
+   - What surfaces or locations could objects be placed on?
+   - Are there any spatial constraints or obstacles?
+   - How would object manipulation affect the room layout?
 
-4. ACTION PLANNER: What specific actions could the assistant take? Should it move, interact with objects, or change states? What's physically possible?
+4. ACTION PLANNER: What specific actions could the assistant take? Consider:
+   - Movement: Should it move to a different location?
+   - Object Interaction: Activate, examine, or use nearby objects?
+   - Object Manipulation: Pick up movable objects or put down held items?
+   - State Changes: Modify object properties (power, open/closed, etc.)?
+   What's physically possible given distance and object properties?
 
-5. VALIDATOR: Do the proposed actions make sense? Are they safe and appropriate? Any conflicts or issues?
+5. VALIDATOR: Validate all proposed actions for safety and feasibility:
+   - Are movement actions possible given obstacles and room boundaries?
+   - Is the assistant close enough for object interactions (distance ≤ 2)?
+   - For pick up: Is the object movable and assistant not already holding something?
+   - For put down: Is the target location free of collisions and within reach?
+   - Do all actions align with the persona and make logical sense?
 
 RESPOND IN JSON FORMAT:
 {{
@@ -233,7 +255,7 @@ RESPOND IN JSON FORMAT:
     "response": "natural conversational response to user",
     "actions": [
         {{
-            "type": "move|interact|state_change",
+            "type": "move|interact|state_change|pick_up|put_down|expression",
             "target": "coordinates or object_id",
             "parameters": {{"key": "value"}}
         }}

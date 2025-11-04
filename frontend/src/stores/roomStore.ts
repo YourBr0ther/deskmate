@@ -115,7 +115,8 @@ const initialAssistant: Assistant = {
   isMoving: false,
   mood: 'neutral',
   status: 'idle',
-  sitting_on_object_id: null
+  sitting_on_object_id: null,
+  holding_object_id: null
 };
 
 export const useRoomStore = create<RoomStore>((set, get) => ({
@@ -391,7 +392,8 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
             currentAction: assistantData.status.action,
             mood: assistantData.status.mood,
             status: assistantData.status.mode === 'active' ? 'active' : 'idle',
-            sitting_on_object_id: assistantData.interaction?.sitting_on
+            sitting_on_object_id: assistantData.interaction?.sitting_on,
+            holding_object_id: assistantData.holding_object_id
           }
         }));
       } else {

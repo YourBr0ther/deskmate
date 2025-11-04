@@ -386,15 +386,37 @@ class ActionExecutor:
                     "error": f"Object not found: {target}"
                 }
 
-            if not target_obj.get("moveable", False):
+            if not target_obj.get("properties", {}).get("movable", False):
                 return {
                     "action": "pick_up",
                     "success": False,
                     "error": f"{target_obj['name']} cannot be picked up"
                 }
 
-            # Update assistant state to hold object
+            # Check if assistant is close enough to pick up
             assistant_state = await assistant_service.get_assistant_state()
+            distance = self._calculate_distance(
+                (assistant_state.position_x, assistant_state.position_y),
+                (target_obj.get("position", {}).get("x", 0),
+                 target_obj.get("position", {}).get("y", 0))
+            )
+
+            if distance > 2:  # Must be within 2 cells to pick up
+                return {
+                    "action": "pick_up",
+                    "success": False,
+                    "error": f"Too far from {target_obj['name']} (distance: {distance}). Move closer first."
+                }
+
+            # Check if already holding something
+            if assistant_state.holding_object_id:
+                return {
+                    "action": "pick_up",
+                    "success": False,
+                    "error": f"Already holding an object. Put it down first."
+                }
+
+            # Update assistant state to hold object
             assistant_state.holding_object_id = target
 
             # Broadcast update
@@ -437,33 +459,105 @@ class ActionExecutor:
                     "error": "Not holding any object"
                 }
 
-            # Parse target location if provided
+            # Get held object info
+            objects = await room_service.get_all_objects()
+            held_object = next((obj for obj in objects if obj["id"] == assistant_state.holding_object_id), None)
+
+            if not held_object:
+                return {
+                    "action": "put_down",
+                    "success": False,
+                    "error": "Held object not found in room data"
+                }
+
+            # Determine target location
+            target_x, target_y = None, None
+
             if target:
-                x, y = self._parse_coordinates(target)
-                if x is not None and y is not None:
-                    # Move object to target location
-                    await room_service.update_object_position(
-                        assistant_state.holding_object_id,
-                        x, y
-                    )
+                # Specific location provided
+                target_x, target_y = self._parse_coordinates(target)
+                if target_x is None or target_y is None:
+                    return {
+                        "action": "put_down",
+                        "success": False,
+                        "error": f"Invalid target coordinates: {target}"
+                    }
+            else:
+                # Default: place at assistant's current position
+                target_x = assistant_state.position_x
+                target_y = assistant_state.position_y
+
+            # Validate target location is within grid bounds
+            if target_x < 0 or target_x >= 64 or target_y < 0 or target_y >= 16:
+                return {
+                    "action": "put_down",
+                    "success": False,
+                    "error": f"Target location ({target_x}, {target_y}) is outside room boundaries"
+                }
+
+            # Check for collisions with other objects
+            object_size = held_object.get("size", {"width": 1, "height": 1})
+            collision_result = await self._check_object_collision(
+                target_x, target_y,
+                object_size["width"], object_size["height"],
+                exclude_id=assistant_state.holding_object_id
+            )
+
+            if collision_result["has_collision"]:
+                return {
+                    "action": "put_down",
+                    "success": False,
+                    "error": f"Cannot place {held_object['name']} at ({target_x}, {target_y}): {collision_result['reason']}"
+                }
+
+            # Check distance from assistant (should be within reach)
+            distance = self._calculate_distance(
+                (assistant_state.position_x, assistant_state.position_y),
+                (target_x, target_y)
+            )
+
+            if distance > 3:  # Allow slightly more range for putting down
+                return {
+                    "action": "put_down",
+                    "success": False,
+                    "error": f"Target location too far away (distance: {distance}). Move closer first."
+                }
+
+            # Execute the put down
+            await room_service.update_object_position(
+                assistant_state.holding_object_id,
+                target_x, target_y
+            )
 
             # Clear holding state
-            held_object = assistant_state.holding_object_id
+            held_object_id = assistant_state.holding_object_id
             assistant_state.holding_object_id = None
 
-            # Broadcast update
+            # Broadcast updates
             if broadcast_callback:
+                # Broadcast assistant state update
                 await broadcast_callback({
                     "type": "assistant_state",
                     "data": assistant_state.to_dict(),
                     "timestamp": datetime.now().isoformat()
                 })
 
+                # Broadcast room update for object position
+                await broadcast_callback({
+                    "type": "room_update",
+                    "data": {
+                        "object_id": held_object_id,
+                        "position": {"x": target_x, "y": target_y}
+                    },
+                    "timestamp": datetime.now().isoformat()
+                })
+
             return {
                 "action": "put_down",
                 "success": True,
-                "object": held_object,
-                "message": f"Put down object"
+                "object": held_object["name"],
+                "location": {"x": target_x, "y": target_y},
+                "message": f"Put down {held_object['name']} at ({target_x}, {target_y})"
             }
 
         except Exception as e:
@@ -541,6 +635,95 @@ class ActionExecutor:
     def _calculate_distance(self, pos1: Tuple[int, int], pos2: Tuple[int, int]) -> int:
         """Calculate Manhattan distance between two positions."""
         return abs(pos1[0] - pos2[0]) + abs(pos1[1] - pos2[1])
+
+    async def _check_object_collision(
+        self,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+        exclude_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Check if placing an object at given position would cause collisions.
+
+        Args:
+            x, y: Top-left position of object
+            width, height: Size of object
+            exclude_id: Object ID to exclude from collision check (e.g., object being moved)
+
+        Returns:
+            Dict with collision info: {"has_collision": bool, "reason": str, "colliding_objects": list}
+        """
+        try:
+            # Get all objects in room
+            objects = await room_service.get_all_objects()
+
+            # Check each object for collision
+            colliding_objects = []
+
+            for obj in objects:
+                # Skip the excluded object (usually the one being placed)
+                if exclude_id and obj["id"] == exclude_id:
+                    continue
+
+                # Skip non-solid objects (they don't block placement)
+                if not obj.get("properties", {}).get("solid", True):
+                    continue
+
+                # Get object position and size
+                obj_x = obj.get("position", {}).get("x", 0)
+                obj_y = obj.get("position", {}).get("y", 0)
+                obj_width = obj.get("size", {}).get("width", 1)
+                obj_height = obj.get("size", {}).get("height", 1)
+
+                # Check for overlap using rectangle collision detection
+                if (x < obj_x + obj_width and
+                    x + width > obj_x and
+                    y < obj_y + obj_height and
+                    y + height > obj_y):
+
+                    colliding_objects.append({
+                        "id": obj["id"],
+                        "name": obj["name"],
+                        "position": {"x": obj_x, "y": obj_y},
+                        "size": {"width": obj_width, "height": obj_height}
+                    })
+
+            # Check collision with assistant position (can't place object on assistant)
+            assistant_state = await assistant_service.get_assistant_state()
+            if (x <= assistant_state.position_x < x + width and
+                y <= assistant_state.position_y < y + height):
+
+                colliding_objects.append({
+                    "id": "assistant",
+                    "name": "Assistant",
+                    "position": {"x": assistant_state.position_x, "y": assistant_state.position_y},
+                    "size": {"width": 1, "height": 1}
+                })
+
+            if colliding_objects:
+                collision_names = [obj["name"] for obj in colliding_objects]
+                reason = f"would overlap with {', '.join(collision_names)}"
+                return {
+                    "has_collision": True,
+                    "reason": reason,
+                    "colliding_objects": colliding_objects
+                }
+
+            return {
+                "has_collision": False,
+                "reason": "no collisions detected",
+                "colliding_objects": []
+            }
+
+        except Exception as e:
+            logger.error(f"Collision check error: {e}")
+            return {
+                "has_collision": True,
+                "reason": f"collision check failed: {str(e)}",
+                "colliding_objects": []
+            }
 
 
 # Global instance

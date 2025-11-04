@@ -8,9 +8,9 @@ DeskMate is a virtual AI companion that lives in a simulated room environment on
 
 ## Current Status
 
-**Phase 1-7: COMPLETE ✅** - Foundation through Brain Council System
-**Current**: Phase 7 complete with full Brain Council reasoning and action execution
-**Next**: Phase 8 - Action Execution & Interaction (object manipulation)
+**Phase 1-8: COMPLETE ✅** - Foundation through Object Manipulation
+**Current**: Phase 8 complete with full object manipulation and visual feedback
+**Next**: Phase 9 - Idle Mode & Autonomous Behavior
 
 ### Completed Phases:
 - ✅ **Phase 1**: Foundation & Infrastructure (Docker, FastAPI, databases)
@@ -20,6 +20,7 @@ DeskMate is a virtual AI companion that lives in a simulated room environment on
 - ✅ **Phase 5**: LLM Integration (Nano-GPT + Ollama dual provider)
 - ✅ **Phase 6**: Chat System & Memory (conversation memory, vector search)
 - ✅ **Phase 7**: Brain Council System (multi-perspective AI reasoning, action execution)
+- ✅ **Phase 8**: Object Manipulation & Interaction (pick up, put down, visual feedback)
 
 ## Git Repository
 
@@ -85,6 +86,10 @@ docker-compose up -d deskmate-postgres deskmate-qdrant
 ### Testing Commands
 
 ```bash
+# Phase 8 Object Manipulation Testing
+./test_phase8_object_manipulation.sh       # Comprehensive object manipulation test suite
+python3 test_object_manipulation_interactive.py  # Interactive object manipulation testing
+
 # Phase 7 Brain Council Testing
 ./test_phase7.sh                    # Comprehensive Brain Council test suite
 ./test_movement_visual.sh           # Visual movement test
@@ -189,6 +194,11 @@ The council returns structured JSON responses that drive both chat responses and
 - `POST /brain/process` - Process message through Brain Council
 - `POST /brain/analyze` - Analyze current context and memory
 
+### Object Manipulation APIs
+- `POST /assistant/pick-up/{object_id}` - Pick up a movable object by ID
+- `POST /assistant/put-down` - Put down held object (optional position in body)
+- `GET /assistant/holding` - Check what object the assistant is holding
+
 ### Memory & Conversation
 - `GET /conversation/memory/stats` - Memory statistics
 - `POST /conversation/memory/clear` - Clear current conversation
@@ -198,6 +208,15 @@ The council returns structured JSON responses that drive both chat responses and
 - `WS /ws` - Real-time chat with Brain Council integration
 
 ## Testing Framework
+
+### Phase 8 Verification
+```bash
+# Test object manipulation features
+./test_phase8_object_manipulation.sh
+
+# Interactive object manipulation testing
+python3 test_object_manipulation_interactive.py
+```
 
 ### Phase 7 Verification
 ```bash
@@ -212,12 +231,18 @@ python3 test_websocket_interactive.py
 ```
 
 ### What to Test
-1. **Brain Council Reasoning** - Multi-perspective analysis in responses
-2. **Action Generation** - Appropriate actions for user requests
-3. **Memory Integration** - Context awareness from past conversations
-4. **Movement Execution** - Pathfinding and grid position updates
-5. **Object Interaction** - State changes and room updates
-6. **Real-time Updates** - WebSocket synchronization
+1. **Object Manipulation** - Pick up, put down, and holding object tracking
+2. **Visual Feedback** - Orange ring and 📦 icon when holding objects
+3. **Distance Validation** - Proximity requirements for object manipulation
+4. **Collision Detection** - Proper placement validation and boundary checks
+5. **Brain Council Integration** - Object manipulation suggestions and reasoning
+6. **API Endpoints** - Dedicated manipulation endpoints functionality
+7. **Brain Council Reasoning** - Multi-perspective analysis in responses
+8. **Action Generation** - Appropriate actions for user requests
+9. **Memory Integration** - Context awareness from past conversations
+10. **Movement Execution** - Pathfinding and grid position updates
+11. **Object Interaction** - State changes and room updates
+12. **Real-time Updates** - WebSocket synchronization
 
 ## Implementation Notes
 
@@ -230,13 +255,15 @@ python3 test_websocket_interactive.py
 6. **Brain Council** - 5-member reasoning system with action execution
 7. **Real-time Chat** - WebSocket with streaming responses
 8. **Object Management** - Create, position, and interact with room objects
+9. **Object Manipulation** - Pick up, put down, and hold objects with visual feedback
+10. **Collision Detection** - Smart placement validation and boundary checking
+11. **Manipulation APIs** - Dedicated endpoints for object manipulation actions
 
 ### Development Priorities
-1. **Phase 8**: Complete object manipulation and interaction system
-2. **Phase 9**: Implement idle mode and autonomous behavior
-3. **Phase 10**: Polish UI/UX and performance optimization
-4. **Phase 11**: Comprehensive testing and documentation
-5. **Phase 12**: Production deployment and advanced features
+1. **Phase 9**: Implement idle mode and autonomous behavior
+2. **Phase 10**: Polish UI/UX and performance optimization
+3. **Phase 11**: Comprehensive testing and documentation
+4. **Phase 12**: Production deployment and advanced features
 
 ## Key Files to Reference
 

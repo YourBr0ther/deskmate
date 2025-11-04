@@ -347,14 +347,21 @@ const Grid: React.FC = () => {
         <div className="w-full h-full flex items-center justify-center">
           <div className={`w-3 h-3 bg-white rounded-full transition-all duration-200 ${
             assistant.sitting_on_object_id ? 'ring-2 ring-blue-400' : ''
-          } ${assistantAnimation.isAnimating ? 'animate-pulse' : ''}`} />
+          } ${assistant.holding_object_id ? 'ring-2 ring-orange-400' : ''} ${
+            assistantAnimation.isAnimating ? 'animate-pulse' : ''
+          }`} />
           {assistant.sitting_on_object_id && (
             <div className="absolute text-xs text-blue-400 mt-4">
               💺
             </div>
           )}
+          {assistant.holding_object_id && (
+            <div className="absolute text-xs text-orange-400 -mt-6 -ml-4">
+              📦
+            </div>
+          )}
           {assistantAnimation.isAnimating && (
-            <div className="absolute text-xs text-green-400 -mt-6">
+            <div className="absolute text-xs text-green-400 -mt-6 ml-4">
               🚶‍♂️
             </div>
           )}
@@ -391,6 +398,11 @@ const Grid: React.FC = () => {
           {assistant.sitting_on_object_id && (
             <div className="text-blue-400 mt-1">
               💺 Sitting on: {assistant.sitting_on_object_id}
+            </div>
+          )}
+          {assistant.holding_object_id && (
+            <div className="text-orange-400 mt-1">
+              📦 Holding: {assistant.holding_object_id}
             </div>
           )}
         </div>

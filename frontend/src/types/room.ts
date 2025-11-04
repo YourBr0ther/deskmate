@@ -53,6 +53,7 @@ export interface Assistant {
   mood: 'happy' | 'neutral' | 'sad' | 'excited' | 'tired';
   status: 'active' | 'idle' | 'busy';
   sitting_on_object_id?: string | null;
+  holding_object_id?: string | null;
   // Animation state
   animatedPosition?: Position;
   movementPath?: Position[];

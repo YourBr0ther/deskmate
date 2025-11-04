@@ -215,3 +215,135 @@ async def get_action_log(limit: int = 50):
     except Exception as e:
         logger.error(f"Error getting action log: {e}")
         raise HTTPException(status_code=500, detail="Failed to get action log")
+
+
+@router.post("/pick-up/{object_id}")
+async def pick_up_object(object_id: str):
+    """
+    Pick up a movable object by ID.
+
+    Args:
+        object_id: ID of the object to pick up
+
+    Returns:
+        Action execution result with success status
+    """
+    try:
+        from app.services.action_executor import action_executor
+
+        if not object_id:
+            raise HTTPException(status_code=400, detail="Object ID is required")
+
+        # Create pick up action
+        action = {
+            "type": "pick_up",
+            "target": object_id,
+            "parameters": {}
+        }
+
+        # Execute the action
+        result = await action_executor.execute_single_action(action)
+
+        if not result["success"]:
+            raise HTTPException(status_code=400, detail=result["error"])
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error picking up object {object_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to pick up object")
+
+
+@router.post("/put-down")
+async def put_down_object(put_down_data: Dict[str, Any] = Body(None)):
+    """
+    Put down the currently held object.
+
+    Body (optional):
+        {
+            "position": {"x": int, "y": int}  // Target position, defaults to assistant location
+        }
+
+    Returns:
+        Action execution result with success status
+    """
+    try:
+        from app.services.action_executor import action_executor
+
+        # Get assistant state to check if holding something
+        assistant = await assistant_service.get_assistant_state()
+        if not assistant.holding_object_id:
+            raise HTTPException(status_code=400, detail="Not holding any object")
+
+        # Parse target position if provided
+        target = None
+        if put_down_data and "position" in put_down_data:
+            position = put_down_data["position"]
+            if "x" in position and "y" in position:
+                target = {"x": position["x"], "y": position["y"]}
+                # Validate position bounds
+                if not (0 <= target["x"] < 64 and 0 <= target["y"] < 16):
+                    raise HTTPException(status_code=400, detail="Position must be within grid bounds (0-63, 0-15)")
+
+        # Create put down action
+        action = {
+            "type": "put_down",
+            "target": target,
+            "parameters": {}
+        }
+
+        # Execute the action
+        result = await action_executor.execute_single_action(action)
+
+        if not result["success"]:
+            raise HTTPException(status_code=400, detail=result["error"])
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error putting down object: {e}")
+        raise HTTPException(status_code=500, detail="Failed to put down object")
+
+
+@router.get("/holding")
+async def get_holding_status():
+    """
+    Get information about what object the assistant is currently holding.
+
+    Returns:
+        {
+            "holding_object_id": str | null,
+            "holding_object_name": str | null,
+            "holding_object": dict | null  // Full object details if holding something
+        }
+    """
+    try:
+        from app.services.room_service import room_service
+
+        assistant = await assistant_service.get_assistant_state()
+        holding_object_id = assistant.holding_object_id
+
+        if not holding_object_id:
+            return {
+                "holding_object_id": None,
+                "holding_object_name": None,
+                "holding_object": None
+            }
+
+        # Get object details
+        objects = await room_service.get_all_objects()
+        held_object = next((obj for obj in objects if obj["id"] == holding_object_id), None)
+
+        return {
+            "holding_object_id": holding_object_id,
+            "holding_object_name": held_object["name"] if held_object else "Unknown",
+            "holding_object": held_object
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting holding status: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get holding status")
