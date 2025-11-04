@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phase 12B Frontend Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-item {
+            margin: 15px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .success { border-color: #4CAF50; background: #f8fff8; }
+        .error { border-color: #f44336; background: #fff8f8; }
+        button {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #1976D2; }
+        iframe {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🚀 Phase 12B Frontend Test</h1>
+        <p>This page helps test the new DeskMate Phase 12B multi-device system.</p>
+
+        <div class="test-item">
+            <h3>📱 Device Detection</h3>
+            <p>Current screen: <span id="screenSize"></span></p>
+            <p>Device type: <span id="deviceType"></span></p>
+            <p>Touch support: <span id="touchSupport"></span></p>
+        </div>
+
+        <div class="test-item">
+            <h3>🔗 Direct Frontend Access</h3>
+            <button onclick="openFrontend()">Open DeskMate Frontend</button>
+            <button onclick="openWithCacheBuster()">Open with Cache Buster</button>
+            <button onclick="clearCacheAndReload()">Clear Cache & Reload</button>
+        </div>
+
+        <div class="test-item">
+            <h3>🖼️ Embedded Frontend Preview</h3>
+            <iframe id="frontendFrame" src="http://localhost:3000"></iframe>
+        </div>
+
+        <div class="test-item">
+            <h3>📋 Expected Phase 12B Features</h3>
+            <ul>
+                <li>✅ Responsive layout that changes based on screen size</li>
+                <li>✅ Top-down floor plan view (not grid view)</li>
+                <li>✅ SVG-based room rendering</li>
+                <li>✅ Split panel layout on desktop (floor plan + chat)</li>
+                <li>✅ Mobile-friendly touch interface</li>
+                <li>✅ Room navigation controls</li>
+                <li>✅ Loading states with spinners</li>
+            </ul>
+        </div>
+
+        <div class="test-item">
+            <h3>🔍 Debug Information</h3>
+            <p>Frontend URL: <a href="http://localhost:3000" target="_blank">http://localhost:3000</a></p>
+            <p>Backend URL: <a href="http://localhost:8000/docs" target="_blank">http://localhost:8000/docs</a></p>
+            <button onclick="checkBackendHealth()">Check Backend Health</button>
+            <div id="backendStatus"></div>
+        </div>
+    </div>
+
+    <script>
+        // Device detection
+        function updateDeviceInfo() {
+            document.getElementById('screenSize').textContent =
+                `${window.innerWidth}x${window.innerHeight}`;
+
+            let deviceType = 'desktop';
+            if (window.innerWidth < 768) deviceType = 'mobile';
+            else if (window.innerWidth < 1024) deviceType = 'tablet';
+
+            document.getElementById('deviceType').textContent = deviceType;
+            document.getElementById('touchSupport').textContent =
+                'ontouchstart' in window ? 'Yes' : 'No';
+        }
+
+        function openFrontend() {
+            window.open('http://localhost:3000', '_blank');
+        }
+
+        function openWithCacheBuster() {
+            const timestamp = new Date().getTime();
+            window.open(`http://localhost:3000?t=${timestamp}`, '_blank');
+        }
+
+        function clearCacheAndReload() {
+            // Force reload the iframe with cache busting
+            const timestamp = new Date().getTime();
+            document.getElementById('frontendFrame').src =
+                `http://localhost:3000?t=${timestamp}`;
+        }
+
+        async function checkBackendHealth() {
+            const statusDiv = document.getElementById('backendStatus');
+            try {
+                const response = await fetch('http://localhost:8000/health');
+                const data = await response.json();
+                statusDiv.innerHTML = `<pre style="background:#f0f0f0;padding:10px;border-radius:4px;">${JSON.stringify(data, null, 2)}</pre>`;
+            } catch (error) {
+                statusDiv.innerHTML = `<p style="color:red;">Error: ${error.message}</p>`;
+            }
+        }
+
+        // Initialize
+        updateDeviceInfo();
+        window.addEventListener('resize', updateDeviceInfo);
+
+        // Auto-refresh iframe every 30 seconds to show updates
+        setInterval(() => {
+            const frame = document.getElementById('frontendFrame');
+            if (frame.src === 'http://localhost:3000') {
+                // Only auto-refresh if it's still the base URL
+                clearCacheAndReload();
+            }
+        }, 30000);
+    </script>
+</body>
+</html>

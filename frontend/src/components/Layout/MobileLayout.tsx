@@ -8,18 +8,9 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useDeviceDetection, useLayoutConfig } from '../../hooks/useDeviceDetection';
 
-// Placeholder components - these will be implemented in later tasks
-const MobileFloorPlan = React.lazy(() =>
-  import('../FloorPlan/MobileFloorPlan').catch(() => ({
-    default: () => <div className="w-full h-full bg-gray-100 flex items-center justify-center text-gray-600">Floor Plan (Coming Soon)</div>
-  }))
-);
-
-const FloatingChatWidget = React.lazy(() =>
-  import('../Chat/FloatingChatWidget').catch(() => ({
-    default: () => <div className="fixed bottom-4 right-4 w-16 h-16 bg-blue-500 rounded-full flex items-center justify-center text-white shadow-lg">💬</div>
-  }))
-);
+// Phase 12B Mobile Components
+const MobileFloorPlan = React.lazy(() => import('../FloorPlan/MobileFloorPlan'));
+const FloatingChatWidget = React.lazy(() => import('../Chat/FloatingChatWidget'));
 
 interface MobileLayoutProps {
   children?: React.ReactNode;

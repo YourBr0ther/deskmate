@@ -8,18 +8,9 @@
 import React, { useState, useCallback } from 'react';
 import { useLayoutConfig } from '../../hooks/useDeviceDetection';
 
-// Placeholder components - these will be implemented in later tasks
-const FloorPlanContainer = React.lazy(() =>
-  import('../FloorPlan/FloorPlanContainer').catch(() => ({
-    default: () => <div className="flex-1 bg-gray-100 flex items-center justify-center">Floor Plan (Coming Soon)</div>
-  }))
-);
-
-const ChatContainer = React.lazy(() =>
-  import('../Chat/ChatContainer').catch(() => ({
-    default: () => <div className="w-full h-full bg-white flex items-center justify-center border-l">Chat (Coming Soon)</div>
-  }))
-);
+// Phase 12B Components
+const FloorPlanContainer = React.lazy(() => import('../FloorPlan/FloorPlanContainer'));
+const ChatContainer = React.lazy(() => import('../Chat/ChatContainer'));
 
 interface DesktopLayoutProps {
   children?: React.ReactNode;
@@ -106,8 +97,8 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({ children }) => {
             fallback={
               <div className="flex items-center justify-center h-full bg-gray-100">
                 <div className="text-center">
-                  <div className="animate-pulse bg-gray-300 h-4 w-32 rounded mb-2"></div>
-                  <div className="animate-pulse bg-gray-300 h-3 w-24 rounded"></div>
+                  <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mb-4"></div>
+                  <div className="text-gray-600">Loading Floor Plan...</div>
                 </div>
               </div>
             }
@@ -187,8 +178,8 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({ children }) => {
             fallback={
               <div className="flex items-center justify-center h-full">
                 <div className="text-center text-gray-500">
-                  <div className="animate-pulse bg-gray-200 h-4 w-32 rounded mb-2"></div>
-                  <div className="animate-pulse bg-gray-200 h-3 w-24 rounded"></div>
+                  <div className="animate-spin w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full mb-2"></div>
+                  <div className="text-gray-600">Loading Chat...</div>
                 </div>
               </div>
             }

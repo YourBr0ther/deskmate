@@ -24,7 +24,9 @@ RUN addgroup -g 1000 -S deskmate && \
 
 # Create necessary directories with proper permissions
 RUN mkdir -p /var/cache/nginx /var/run /var/log/nginx && \
-    chown -R deskmate:deskmate /var/cache/nginx /var/run /var/log/nginx /usr/share/nginx/html
+    chown -R deskmate:deskmate /var/cache/nginx /var/run /var/log/nginx /usr/share/nginx/html && \
+    touch /var/run/nginx.pid && \
+    chown deskmate:deskmate /var/run/nginx.pid
 
 # Copy built app to nginx
 COPY --from=build --chown=deskmate:deskmate /app/build /usr/share/nginx/html
