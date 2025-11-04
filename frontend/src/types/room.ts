@@ -54,6 +54,8 @@ export interface Assistant {
   status: 'active' | 'idle' | 'busy';
   sitting_on_object_id?: string | null;
   holding_object_id?: string | null;
+  facing?: string;
+  energy_level?: number; // 0.0 to 1.0
   // Animation state
   animatedPosition?: Position;
   movementPath?: Position[];

@@ -5,9 +5,15 @@
 import React, { useEffect, useState } from 'react';
 import { usePersonaStore } from './stores/personaStore';
 import { useRoomStore } from './stores/roomStore';
+import { useSettingsStore } from './stores/settingsStore';
 import Grid from './components/Grid';
 import ChatWindow from './components/Chat/ChatWindow';
 import StorageCloset from './components/StorageCloset';
+import SettingsPanel from './components/Settings/SettingsPanel';
+import TimeDisplay from './components/TimeDisplay';
+import StatusIndicators from './components/StatusIndicators';
+import ExpressionDisplay from './components/ExpressionDisplay';
+import PerformanceMonitor from './components/PerformanceMonitor';
 
 const App: React.FC = () => {
   const [isMobile, setIsMobile] = useState(false);
@@ -15,6 +21,7 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'room' | 'chat'>('room');
   const { personas, selectedPersona, isLoading, error, loadPersonas, loadPersonaByName, clearError } = usePersonaStore();
   const { setViewMode } = useRoomStore();
+  const { openSettings } = useSettingsStore();
 
   useEffect(() => {
     const checkMobile = () => {
@@ -43,17 +50,29 @@ const App: React.FC = () => {
         {/* Mobile Header - Simplified */}
         <div className="flex-shrink-0 px-4 py-3 bg-gray-800 border-b border-gray-700 flex items-center justify-between">
           <h1 className="text-lg font-bold">DeskMate</h1>
-          {selectedPersona && (
+          <div className="flex items-center space-x-2">
+            {selectedPersona && (
+              <button
+                onClick={() => setShowPersonaSelector(!showPersonaSelector)}
+                className="flex items-center space-x-2 px-3 py-1 bg-gray-700 rounded-lg"
+              >
+                <span className="text-sm">{selectedPersona.persona.data.name}</span>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            )}
             <button
-              onClick={() => setShowPersonaSelector(!showPersonaSelector)}
-              className="flex items-center space-x-2 px-3 py-1 bg-gray-700 rounded-lg"
+              onClick={openSettings}
+              className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+              title="Settings"
             >
-              <span className="text-sm">{selectedPersona.persona.data.name}</span>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
             </button>
-          )}
+          </div>
         </div>
 
         {/* Persona Selector Overlay - Only when needed */}
@@ -126,6 +145,12 @@ const App: React.FC = () => {
             <ChatWindow />
           )}
         </div>
+
+        {/* Settings Panel - Global overlay */}
+        <SettingsPanel />
+
+        {/* Performance Monitor - Global overlay */}
+        <PerformanceMonitor />
       </div>
     );
   }
@@ -139,28 +164,42 @@ const App: React.FC = () => {
         <div className="flex-shrink-0 px-6 py-4 bg-gray-800 border-b border-gray-700 flex items-center justify-between">
           <h1 className="text-xl font-bold">DeskMate Room</h1>
 
-          {/* Persona Selector Button */}
-          <button
-            onClick={() => setShowPersonaSelector(!showPersonaSelector)}
-            className="flex items-center space-x-3 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
-          >
-            {selectedPersona ? (
-              <>
-                <div className="w-8 h-8 bg-gradient-to-b from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-sm font-bold">
-                  {selectedPersona.persona.data.name.charAt(0)}
-                </div>
-                <div className="text-left">
-                  <div className="text-sm font-medium">{selectedPersona.persona.data.name}</div>
-                  <div className="text-xs text-gray-400">Click to change</div>
-                </div>
-              </>
-            ) : (
-              <span className="text-sm">Select Persona</span>
-            )}
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
+          <div className="flex items-center space-x-3">
+            {/* Persona Selector Button */}
+            <button
+              onClick={() => setShowPersonaSelector(!showPersonaSelector)}
+              className="flex items-center space-x-3 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+            >
+              {selectedPersona ? (
+                <>
+                  <div className="w-8 h-8 bg-gradient-to-b from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-sm font-bold">
+                    {selectedPersona.persona.data.name.charAt(0)}
+                  </div>
+                  <div className="text-left">
+                    <div className="text-sm font-medium">{selectedPersona.persona.data.name}</div>
+                    <div className="text-xs text-gray-400">Click to change</div>
+                  </div>
+                </>
+              ) : (
+                <span className="text-sm">Select Persona</span>
+              )}
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {/* Settings Button */}
+            <button
+              onClick={openSettings}
+              className="p-3 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+              title="Settings"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Persona Selector Dropdown - Desktop */}
@@ -246,46 +285,38 @@ const App: React.FC = () => {
           <h2 className="text-lg font-bold">DeskMate Chat</h2>
         </div>
 
-        {/* Companion Portrait - Compact */}
+        {/* Companion Portrait - Enhanced */}
         {selectedPersona && (
           <div className="flex-shrink-0 p-4 border-b border-gray-700">
             <div className="flex items-center space-x-4">
-              <div className="w-16 h-16 bg-gradient-to-b from-blue-500 to-blue-600 rounded-lg flex items-center justify-center overflow-hidden relative">
-                <img
-                  src={`/api/personas/${encodeURIComponent(selectedPersona.persona.data.name)}/image`}
-                  alt={selectedPersona.persona.data.name}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    // Fallback to character initial if image fails to load
-                    e.currentTarget.style.display = 'none';
-                    const fallback = e.currentTarget.nextElementSibling as HTMLElement;
-                    if (fallback) {
-                      fallback.style.display = 'flex';
-                    }
-                  }}
-                />
-                {/* Fallback character initial (hidden by default) */}
-                <div className="absolute inset-0 flex items-center justify-center text-2xl text-white font-bold" style={{display: 'none'}}>
-                  {selectedPersona.persona.data.name.charAt(0)}
-                </div>
-              </div>
+              <ExpressionDisplay size="medium" showMoodOverlay={true} />
               <div className="flex-1">
                 <h3 className="font-semibold">{selectedPersona.persona.data.name}</h3>
                 <div className="text-sm text-gray-400">{selectedPersona.persona.data.creator}</div>
-                <div className="flex items-center mt-1 text-sm">
-                  <span className="mr-2">😊</span>
-                  <span>Happy</span>
+                <div className="mt-2">
+                  <StatusIndicators compact={true} />
                 </div>
               </div>
             </div>
           </div>
         )}
 
+        {/* Time Display */}
+        <div className="flex-shrink-0 p-4 border-b border-gray-700">
+          <TimeDisplay className="bg-gray-900/50 rounded-lg p-3" />
+        </div>
+
         {/* Chat Window - Takes remaining space */}
         <div className="flex-1 min-h-0">
           <ChatWindow />
         </div>
       </div>
+
+      {/* Settings Panel - Global overlay */}
+      <SettingsPanel />
+
+      {/* Performance Monitor - Global overlay */}
+      <PerformanceMonitor />
     </div>
   );
 };
