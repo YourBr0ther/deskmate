@@ -67,6 +67,23 @@ class ConversationConfig(BaseModel):
     memory_cleanup_interval: int = int(os.getenv("MEMORY_CLEANUP_INTERVAL", "3600"))  # seconds
 
 
+class IdleConfig(BaseModel):
+    """Idle mode and autonomous behavior configuration."""
+    inactivity_timeout_minutes: int = int(os.getenv("IDLE_TIMEOUT_MINUTES", "10"))  # Minutes before idle mode
+    action_interval_seconds: int = int(os.getenv("IDLE_ACTION_INTERVAL_SECONDS", "180"))  # Base interval between actions
+    max_action_interval_seconds: int = int(os.getenv("IDLE_MAX_ACTION_INTERVAL", "480"))  # Max interval (8 minutes)
+    dream_expiration_hours: int = int(os.getenv("DREAM_EXPIRATION_HOURS", "24"))  # Hours before dreams expire
+    idle_model_preference: str = os.getenv("IDLE_MODEL_PREFERENCE", "ollama")  # Prefer Ollama for idle mode
+    idle_models: List[str] = [
+        "phi3:mini",
+        "gemma2:2b",
+        "llama3.2:1b",
+        "qwen2:0.5b"
+    ]  # Lightweight models for idle mode
+    max_consecutive_actions: int = int(os.getenv("IDLE_MAX_CONSECUTIVE_ACTIONS", "5"))  # Max actions before pause
+    energy_cost_per_action: float = float(os.getenv("IDLE_ENERGY_COST", "0.1"))  # Energy consumed per action
+
+
 class AppConfig(BaseModel):
     """Main application configuration."""
     title: str = "DeskMate API"
@@ -81,6 +98,7 @@ class AppConfig(BaseModel):
     llm: LLMConfig = LLMConfig()
     security: SecurityConfig = SecurityConfig()
     conversation: ConversationConfig = ConversationConfig()
+    idle: IdleConfig = IdleConfig()
 
 
 # Global configuration instance

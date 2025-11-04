@@ -229,8 +229,40 @@ export const useChatStore = create<ChatState>((set, get) => ({
   sendMessage: async (content: string) => {
     // Check if message is a command
     if (content.startsWith('/')) {
-      await get().handleCommand(content);
-      return;
+      // Handle specific commands via WebSocket for better real-time response
+      if (content.toLowerCase().trim() === '/idle') {
+        // Send idle command directly via WebSocket
+        const { websocket, isConnected } = get();
+
+        if (!isConnected || !websocket) {
+          console.error('Not connected to WebSocket');
+          return;
+        }
+
+        // Add user command to chat
+        get().addMessage({
+          role: 'user',
+          content: content,
+          timestamp: new Date().toISOString()
+        });
+
+        // Send to backend via WebSocket
+        websocket.send(JSON.stringify({
+          type: 'chat_message',
+          data: {
+            message: content,
+            persona_context: null
+          }
+        }));
+
+        // Clear current message
+        set({ currentMessage: '' });
+        return;
+      } else {
+        // Use API for other commands
+        await get().handleCommand(content);
+        return;
+      }
     }
 
     const { websocket, isConnected } = get();
@@ -464,8 +496,50 @@ function handleWebSocketMessage(message: any) {
       break;
 
     case 'assistant_state':
-      // Handle assistant state updates (could be used for visual updates)
-      // Assistant state updated
+      // Handle assistant state updates - update room store
+      try {
+        import('./roomStore').then(({ useRoomStore }) => {
+          const roomStore = useRoomStore.getState();
+
+          if (data.status) {
+            roomStore.setAssistantStatus(data.status.mode === 'active' ? 'active' : 'idle');
+          }
+          if (data.status?.action) {
+            roomStore.setAssistantAction(data.status.action);
+          }
+          if (data.status?.mood) {
+            roomStore.setAssistantMood(data.status.mood);
+          }
+          if (data.position) {
+            roomStore.setAssistantPosition({ x: data.position.x, y: data.position.y });
+          }
+        }).catch(error => {
+          console.error('Error updating assistant state:', error);
+        });
+      } catch (error) {
+        console.error('Error importing room store:', error);
+      }
+      break;
+
+    case 'mode_change':
+      // Handle mode change notifications
+      store.addMessage({
+        role: 'system',
+        content: data.message || `Assistant is now in ${data.new_mode} mode`,
+        timestamp: new Date().toISOString()
+      });
+
+      // Update room store assistant status
+      try {
+        import('./roomStore').then(({ useRoomStore }) => {
+          const roomStore = useRoomStore.getState();
+          roomStore.setAssistantStatus(data.new_mode === 'active' ? 'active' : 'idle');
+        }).catch(error => {
+          console.error('Error updating mode in room store:', error);
+        });
+      } catch (error) {
+        console.error('Error importing room store for mode change:', error);
+      }
       break;
 
     case 'error':

@@ -257,6 +257,127 @@ class AssistantService:
 
         return pathfinding_service.get_reachable_positions(start_pos, obstacles)
 
+    async def update_assistant_state(self, assistant_state: AssistantState) -> AssistantState:
+        """
+        Update assistant state in database.
+
+        Args:
+            assistant_state: Modified assistant state object
+
+        Returns:
+            Updated assistant state
+        """
+        async with await self.get_db_session() as session:
+            # Merge the updated state
+            assistant_state.updated_at = func.now()
+            session.add(assistant_state)
+            await session.commit()
+            await session.refresh(assistant_state)
+
+            logger.info(f"Updated assistant state: mode={assistant_state.mode}, action={assistant_state.current_action}")
+            return assistant_state
+
+    async def record_user_interaction(self) -> None:
+        """Record that user has interacted with the assistant."""
+        async with await self.get_db_session() as session:
+            stmt = select(AssistantState).where(AssistantState.id == "default")
+            result = await session.execute(stmt)
+            assistant = result.scalar_one_or_none()
+
+            if assistant:
+                assistant.last_user_interaction = func.now()
+                # If in idle mode, switch back to active
+                if assistant.mode == "idle":
+                    assistant.mode = "active"
+                    logger.info("Assistant returned to active mode due to user interaction")
+
+                await session.commit()
+
+    async def set_assistant_mode(self, mode: str) -> Dict[str, Any]:
+        """
+        Set assistant mode (active/idle).
+
+        Args:
+            mode: New mode ('active' or 'idle')
+
+        Returns:
+            Result of mode change
+        """
+        try:
+            async with await self.get_db_session() as session:
+                stmt = select(AssistantState).where(AssistantState.id == "default")
+                result = await session.execute(stmt)
+                assistant = result.scalar_one_or_none()
+
+                if not assistant:
+                    assistant = await self.get_assistant_state()
+
+                old_mode = assistant.mode
+                assistant.mode = mode
+
+                if mode == "active":
+                    assistant.last_user_interaction = func.now()
+                elif mode == "idle":
+                    assistant.current_action = "thinking"
+
+                await session.commit()
+                await session.refresh(assistant)
+
+                await self._log_action(
+                    action_type="mode_change",
+                    action_data={"from_mode": old_mode, "to_mode": mode},
+                    success=True,
+                    triggered_by="system"
+                )
+
+                logger.info(f"Assistant mode changed from {old_mode} to {mode}")
+
+                return {
+                    "success": True,
+                    "old_mode": old_mode,
+                    "new_mode": mode,
+                    "assistant_state": assistant.to_dict()
+                }
+
+        except Exception as e:
+            logger.error(f"Error setting assistant mode: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    async def update_energy_level(self, energy_delta: float) -> None:
+        """
+        Update assistant energy level.
+
+        Args:
+            energy_delta: Change in energy (positive or negative)
+        """
+        async with await self.get_db_session() as session:
+            stmt = select(AssistantState).where(AssistantState.id == "default")
+            result = await session.execute(stmt)
+            assistant = result.scalar_one_or_none()
+
+            if assistant:
+                assistant.energy_level = max(0.0, min(1.0, assistant.energy_level + energy_delta))
+                await session.commit()
+                logger.debug(f"Assistant energy updated by {energy_delta} to {assistant.energy_level}")
+
+    async def get_inactivity_duration(self) -> float:
+        """
+        Get duration in minutes since last user interaction.
+
+        Returns:
+            Minutes since last user interaction
+        """
+        assistant = await self.get_assistant_state()
+        if not assistant.last_user_interaction:
+            return 0.0
+
+        now = datetime.utcnow()
+        time_diff = now - assistant.last_user_interaction
+        return time_diff.total_seconds() / 60.0
+
     async def _get_room_obstacles(self) -> Set[Tuple[int, int]]:
         """Get all obstacle positions in the room."""
         obstacles = set()

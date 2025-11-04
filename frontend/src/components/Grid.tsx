@@ -345,11 +345,20 @@ const Grid: React.FC = () => {
         }}
       >
         <div className="w-full h-full flex items-center justify-center">
-          <div className={`w-3 h-3 bg-white rounded-full transition-all duration-200 ${
-            assistant.sitting_on_object_id ? 'ring-2 ring-blue-400' : ''
-          } ${assistant.holding_object_id ? 'ring-2 ring-orange-400' : ''} ${
-            assistantAnimation.isAnimating ? 'animate-pulse' : ''
-          }`} />
+          <div className={`w-3 h-3 rounded-full transition-all duration-200 ${
+            assistant.status === 'idle'
+              ? 'bg-gray-400 animate-pulse ring-2 ring-gray-500'
+              : 'bg-white'
+          } ${assistant.sitting_on_object_id ? 'ring-2 ring-blue-400' : ''} ${
+            assistant.holding_object_id ? 'ring-2 ring-orange-400' : ''
+          } ${assistantAnimation.isAnimating ? 'animate-pulse' : ''}`} />
+
+          {/* Status indicators */}
+          {assistant.status === 'idle' && (
+            <div className="absolute text-xs text-gray-300 -mt-8">
+              💭
+            </div>
+          )}
           {assistant.sitting_on_object_id && (
             <div className="absolute text-xs text-blue-400 mt-4">
               💺
@@ -394,7 +403,13 @@ const Grid: React.FC = () => {
         <div className="absolute top-2 left-2 text-white text-xs bg-black/50 p-2 rounded">
           Grid: {gridSize.width}x{gridSize.height} |
           Assistant: ({assistant.position.x}, {assistant.position.y}) |
+          Mode: {assistant.status} |
           Objects: {objects.length}
+          {assistant.status === 'idle' && (
+            <div className="text-gray-300 mt-1">
+              💭 Idle Mode: Thinking autonomously
+            </div>
+          )}
           {assistant.sitting_on_object_id && (
             <div className="text-blue-400 mt-1">
               💺 Sitting on: {assistant.sitting_on_object_id}

@@ -17,7 +17,17 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     logger.info("Starting DeskMate backend...")
     await init_db()
+
+    # Start idle controller for autonomous behavior
+    from app.services.idle_controller import idle_controller
+    await idle_controller.start()
+    logger.info("Idle controller started")
+
     yield
+
+    # Stop idle controller
+    await idle_controller.stop()
+    logger.info("Idle controller stopped")
     logger.info("Shutting down DeskMate backend...")
 
 

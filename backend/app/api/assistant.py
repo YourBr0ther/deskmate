@@ -347,3 +347,185 @@ async def get_holding_status():
     except Exception as e:
         logger.error(f"Error getting holding status: {e}")
         raise HTTPException(status_code=500, detail="Failed to get holding status")
+
+
+# ============= IDLE MODE ENDPOINTS =============
+
+@router.get("/mode")
+async def get_assistant_mode():
+    """Get current assistant mode (active/idle)."""
+    try:
+        assistant = await assistant_service.get_assistant_state()
+        return {
+            "mode": assistant.mode,
+            "last_user_interaction": assistant.last_user_interaction.isoformat() if assistant.last_user_interaction else None,
+            "inactivity_duration_minutes": await assistant_service.get_inactivity_duration(),
+            "current_action": assistant.current_action,
+            "energy_level": assistant.energy_level
+        }
+    except Exception as e:
+        logger.error(f"Error getting assistant mode: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get assistant mode")
+
+
+@router.put("/mode")
+async def set_assistant_mode(mode_data: Dict[str, Any] = Body(...)):
+    """
+    Set assistant mode.
+
+    Body:
+        {
+            "mode": "active" | "idle"
+        }
+    """
+    try:
+        mode = mode_data.get("mode")
+        if mode not in ["active", "idle"]:
+            raise HTTPException(status_code=400, detail="Mode must be 'active' or 'idle'")
+
+        result = await assistant_service.set_assistant_mode(mode)
+
+        if not result["success"]:
+            raise HTTPException(status_code=400, detail=result["error"])
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error setting assistant mode: {e}")
+        raise HTTPException(status_code=500, detail="Failed to set assistant mode")
+
+
+@router.get("/idle/status")
+async def get_idle_status():
+    """Get idle controller status and statistics."""
+    try:
+        from app.services.idle_controller import idle_controller
+
+        status = await idle_controller.get_status()
+        return status
+
+    except Exception as e:
+        logger.error(f"Error getting idle status: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get idle status")
+
+
+@router.post("/idle/force")
+async def force_idle_mode():
+    """Force assistant into idle mode immediately."""
+    try:
+        from app.services.idle_controller import idle_controller
+
+        await idle_controller.force_idle_mode()
+
+        return {
+            "success": True,
+            "message": "Assistant forced into idle mode",
+            "new_mode": "idle"
+        }
+
+    except Exception as e:
+        logger.error(f"Error forcing idle mode: {e}")
+        raise HTTPException(status_code=500, detail="Failed to force idle mode")
+
+
+@router.post("/idle/activate")
+async def force_active_mode():
+    """Force assistant back to active mode."""
+    try:
+        from app.services.idle_controller import idle_controller
+
+        await idle_controller.force_active_mode()
+
+        return {
+            "success": True,
+            "message": "Assistant returned to active mode",
+            "new_mode": "active"
+        }
+
+    except Exception as e:
+        logger.error(f"Error forcing active mode: {e}")
+        raise HTTPException(status_code=500, detail="Failed to force active mode")
+
+
+@router.get("/dreams")
+async def get_dreams(limit: int = 10, hours_back: int = 24):
+    """
+    Get recent dreams (autonomous actions from idle mode).
+
+    Args:
+        limit: Maximum number of dreams to return (default: 10)
+        hours_back: How many hours back to search (default: 24)
+    """
+    try:
+        from app.services.dream_memory import dream_memory
+
+        if limit > 100:
+            raise HTTPException(status_code=400, detail="Limit cannot exceed 100")
+
+        if hours_back > 168:  # 1 week
+            raise HTTPException(status_code=400, detail="Hours back cannot exceed 168 (1 week)")
+
+        dreams = await dream_memory.get_recent_dreams(limit, hours_back)
+
+        return {
+            "dreams": dreams,
+            "count": len(dreams),
+            "limit": limit,
+            "hours_back": hours_back
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting dreams: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get dreams")
+
+
+@router.get("/dreams/search")
+async def search_dreams(query: str, limit: int = 5):
+    """
+    Search for dreams relevant to a query.
+
+    Args:
+        query: Search query text
+        limit: Maximum number of results (default: 5)
+    """
+    try:
+        from app.services.dream_memory import dream_memory
+
+        if not query or len(query.strip()) < 2:
+            raise HTTPException(status_code=400, detail="Query must be at least 2 characters")
+
+        if limit > 20:
+            raise HTTPException(status_code=400, detail="Limit cannot exceed 20")
+
+        dreams = await dream_memory.search_relevant_dreams(query.strip(), limit)
+
+        return {
+            "dreams": dreams,
+            "count": len(dreams),
+            "query": query,
+            "limit": limit
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error searching dreams: {e}")
+        raise HTTPException(status_code=500, detail="Failed to search dreams")
+
+
+@router.get("/dreams/stats")
+async def get_dream_statistics():
+    """Get statistics about stored dreams and idle behavior."""
+    try:
+        from app.services.dream_memory import dream_memory
+
+        stats = await dream_memory.get_dream_statistics()
+        return stats
+
+    except Exception as e:
+        logger.error(f"Error getting dream statistics: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get dream statistics")

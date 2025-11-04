@@ -361,6 +361,120 @@ The Memory Keeper has access to {retrieved_count} relevant past messages and {co
         }
         return defaults.get(field, "")
 
+    async def process_idle_reasoning(self, idle_context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Process autonomous reasoning for idle mode using simplified council.
+
+        Args:
+            idle_context: Context including position, energy, objects, recent dreams, goals
+
+        Returns:
+            {
+                "response": "description of autonomous action",
+                "actions": [{"type": "action_type", "target": "target", "parameters": {...}}],
+                "reasoning": "why this action was chosen"
+            }
+        """
+        try:
+            logger.info("Brain Council processing idle reasoning...")
+
+            # Build simplified idle prompt
+            idle_prompt = self._build_idle_prompt(idle_context)
+
+            # Get reasoning using lightweight model
+            response = await self._query_idle_council(idle_prompt)
+
+            # Parse response
+            decision = await self._parse_council_response(response)
+
+            return decision
+
+        except Exception as e:
+            logger.error(f"Error in idle reasoning: {e}")
+            return {
+                "response": "Continuing to rest and observe the room.",
+                "actions": [{"type": "rest", "target": None, "parameters": {}}],
+                "reasoning": f"Idle reasoning error: {str(e)}"
+            }
+
+    def _build_idle_prompt(self, context: Dict[str, Any]) -> str:
+        """Build simplified prompt for idle mode reasoning."""
+        position = context.get("assistant_position", {"x": 32, "y": 8})
+        energy = context.get("assistant_energy", 1.0)
+        objects = context.get("room_objects", [])
+        recent_dreams = context.get("recent_dreams", [])
+        goals = context.get("goals", [])
+        action_count = context.get("action_count", 0)
+
+        # Get nearby objects for spatial awareness
+        nearby_objects = []
+        for obj in objects:
+            obj_pos = obj.get("position", {})
+            distance = abs(obj_pos.get("x", 50) - position["x"]) + abs(obj_pos.get("y", 50) - position["y"])
+            if distance <= 5:  # Within 5 cells
+                nearby_objects.append(f"{obj.get('name', 'object')} at ({obj_pos.get('x')}, {obj_pos.get('y')})")
+
+        prompt = f"""You are an AI assistant in idle mode, thinking and acting autonomously while the user is away.
+
+CURRENT SITUATION:
+- Position: ({position['x']}, {position['y']})
+- Energy Level: {energy:.1f}/1.0
+- Actions Taken: {action_count}
+- Nearby Objects: {', '.join(nearby_objects[:5]) if nearby_objects else 'none'}
+
+RECENT AUTONOMOUS ACTIONS:
+{chr(10).join(f"- {dream}" for dream in recent_dreams[-3:]) if recent_dreams else "- None yet"}
+
+CURRENT GOALS:
+{chr(10).join(f"- {goal}" for goal in goals)}
+
+IDLE MODE GUIDELINES:
+- Take simple, low-energy actions
+- Explore the room gradually
+- Interact with interesting objects
+- Rest when energy is low
+- Be curious but not disruptive
+- Actions should be realistic and character-appropriate
+
+Choose ONE simple action to take right now. Options:
+- move: Move to a nearby location {"x": X, "y": Y}
+- interact: Interact with an object by ID
+- state_change: Change mood or expression
+- rest: Restore energy and think
+
+Respond in JSON format:
+{{
+    "response": "What I'm doing (in character)",
+    "actions": [{{
+        "type": "action_type",
+        "target": "coordinates or object_id or null",
+        "parameters": {{}}
+    }}],
+    "reasoning": "Why I chose this action"
+}}"""
+
+        return prompt
+
+    async def _query_idle_council(self, prompt: str) -> str:
+        """Query LLM with idle-specific prompt."""
+        try:
+            messages = [
+                ChatMessage(role="system", content="You are an autonomous AI assistant in idle mode. Respond in JSON format only."),
+                ChatMessage(role="user", content=prompt)
+            ]
+
+            response = ""
+            async for chunk in llm_manager.chat_completion_stream(messages=messages, temperature=0.4):
+                if chunk:
+                    response += chunk
+
+            logger.info(f"Idle Council raw response: {response[:200]}...")
+            return response.strip()
+
+        except Exception as e:
+            logger.error(f"Error querying idle council: {e}")
+            return '{"response": "Observing the room quietly.", "actions": [{"type": "rest", "target": null}], "reasoning": "System error in idle mode"}'
+
 
 # Global instance
 brain_council = BrainCouncil()

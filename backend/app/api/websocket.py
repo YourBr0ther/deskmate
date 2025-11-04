@@ -22,6 +22,8 @@ from app.services.brain_council import brain_council
 from app.services.room_service import room_service
 from app.services.conversation_memory import conversation_memory
 from app.services.action_executor import action_executor
+from app.services.idle_controller import idle_controller
+from app.services.dream_memory import dream_memory
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +127,19 @@ async def websocket_endpoint(websocket: WebSocket):
         # Note: Chat history will be loaded when persona is selected via API
         # Don't send history on initial WebSocket connection since no persona is selected yet
 
+        # Set up idle mode change notifications
+        def mode_change_callback(new_mode: str):
+            asyncio.create_task(connection_manager.broadcast({
+                "type": "mode_change",
+                "data": {
+                    "new_mode": new_mode,
+                    "message": f"Assistant entered {new_mode} mode"
+                },
+                "timestamp": datetime.now().isoformat()
+            }))
+
+        idle_controller.add_mode_change_callback(mode_change_callback)
+
         while True:
             # Receive message from client
             data = await websocket.receive_text()
@@ -147,6 +162,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 await handle_model_change(websocket, message_data)
             elif message_type == "clear_chat":
                 await handle_clear_chat(websocket, message_data)
+            elif message_type == "idle_command":
+                await handle_idle_command(websocket, message_data)
             else:
                 await connection_manager.send_personal_message({
                     "type": "error",
@@ -214,6 +231,34 @@ async def handle_chat_message(websocket: WebSocket, data: Dict[str, Any]):
         # Get persona context (if available)
         persona_context = data.get("persona_context")
         persona_name = persona_context.get("name") if persona_context else None
+
+        # Record user interaction to reset idle timer
+        await assistant_service.record_user_interaction()
+
+        # Handle special commands
+        if user_message.lower().strip() == "/idle":
+            # Switch to idle mode immediately
+            await idle_controller.force_idle_mode()
+
+            await connection_manager.send_personal_message({
+                "type": "mode_change",
+                "data": {
+                    "new_mode": "idle",
+                    "message": "Assistant has entered idle mode"
+                },
+                "timestamp": datetime.now().isoformat()
+            }, websocket)
+
+            # Send assistant typing indicator off
+            await connection_manager.send_personal_message({
+                "type": "assistant_typing",
+                "data": {"typing": False},
+                "timestamp": datetime.now().isoformat()
+            }, websocket)
+
+            # Broadcast state update
+            await broadcast_assistant_update()
+            return
 
         # Store user message in conversation memory
         await conversation_memory.add_user_message(user_message, persona_name)
@@ -503,6 +548,82 @@ async def handle_clear_chat(websocket: WebSocket, data: Dict[str, Any]):
         await connection_manager.send_personal_message({
             "type": "error",
             "data": {"message": f"Failed to clear chat: {str(e)}"},
+            "timestamp": datetime.now().isoformat()
+        }, websocket)
+
+
+async def handle_idle_command(websocket: WebSocket, data: Dict[str, Any]):
+    """Handle idle mode commands."""
+    try:
+        command = data.get("command", "")
+
+        if command == "force_idle":
+            # Force assistant into idle mode
+            await idle_controller.force_idle_mode()
+
+            await connection_manager.send_personal_message({
+                "type": "mode_change",
+                "data": {
+                    "new_mode": "idle",
+                    "message": "Assistant forced into idle mode"
+                },
+                "timestamp": datetime.now().isoformat()
+            }, websocket)
+
+        elif command == "force_active":
+            # Force assistant back to active mode
+            await idle_controller.force_active_mode()
+
+            await connection_manager.send_personal_message({
+                "type": "mode_change",
+                "data": {
+                    "new_mode": "active",
+                    "message": "Assistant returned to active mode"
+                },
+                "timestamp": datetime.now().isoformat()
+            }, websocket)
+
+        elif command == "get_status":
+            # Get idle controller status
+            status = await idle_controller.get_status()
+
+            await connection_manager.send_personal_message({
+                "type": "idle_status",
+                "data": status,
+                "timestamp": datetime.now().isoformat()
+            }, websocket)
+
+        elif command == "get_dreams":
+            # Get recent dreams
+            limit = data.get("limit", 10)
+            hours_back = data.get("hours_back", 24)
+            recent_dreams = await dream_memory.get_recent_dreams(limit, hours_back)
+
+            await connection_manager.send_personal_message({
+                "type": "dreams",
+                "data": {
+                    "dreams": recent_dreams,
+                    "limit": limit,
+                    "hours_back": hours_back
+                },
+                "timestamp": datetime.now().isoformat()
+            }, websocket)
+
+        else:
+            await connection_manager.send_personal_message({
+                "type": "error",
+                "data": {"message": f"Unknown idle command: {command}"},
+                "timestamp": datetime.now().isoformat()
+            }, websocket)
+
+        # Broadcast state update after command
+        await broadcast_assistant_update()
+
+    except Exception as e:
+        logger.error(f"Error handling idle command: {e}")
+        await connection_manager.send_personal_message({
+            "type": "error",
+            "data": {"message": f"Failed to execute idle command: {str(e)}"},
             "timestamp": datetime.now().isoformat()
         }, websocket)
 
