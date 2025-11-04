@@ -23,39 +23,19 @@ router = APIRouter(prefix="/assistant", tags=["assistant"])
 async def list_available_assistants():
     """Get list of all available assistants."""
     try:
-        # For now, return a hardcoded list of available assistants
-        # In a real implementation, this could query a database or config
-        assistants = [
-            {
-                "id": "default",
-                "name": "Default Assistant",
-                "description": "The standard AI assistant with balanced capabilities",
-                "status": "active",
-                "capabilities": ["chat", "movement", "object_interaction"],
-                "model": "nano-gpt-4"
-            },
-            {
-                "id": "creative",
-                "name": "Creative Assistant",
-                "description": "Specialized in creative tasks and artistic endeavors",
-                "status": "available",
-                "capabilities": ["chat", "creative_writing", "art_generation"],
-                "model": "nano-gpt-4"
-            },
-            {
-                "id": "analytical",
-                "name": "Analytical Assistant",
-                "description": "Focused on data analysis and logical reasoning",
-                "status": "available",
-                "capabilities": ["chat", "data_analysis", "problem_solving"],
-                "model": "nano-gpt-4"
-            }
-        ]
+        # Return only persona-based assistants from the test folder
+        # The frontend will add these automatically based on available personas
+        assistants = []
+
+        # Get current assistant if one is set
+        current_assistant = None
+        if hasattr(switch_assistant, '_current_assistant'):
+            current_assistant = switch_assistant._current_assistant
 
         return {
             "assistants": assistants,
             "count": len(assistants),
-            "current_assistant": "default"  # TODO: Get from service
+            "current_assistant": current_assistant
         }
     except Exception as e:
         logger.error(f"Error listing assistants: {e}")
@@ -80,22 +60,33 @@ async def switch_assistant(switch_data: Dict[str, Any] = Body(...)):
         if not assistant_id:
             raise HTTPException(status_code=400, detail="Assistant ID is required")
 
-        # Validate assistant ID exists
-        valid_assistants = ["default", "creative", "analytical"]
-        if assistant_id not in valid_assistants:
+        # Validate assistant ID exists (allow persona-based assistants)
+        if not assistant_id.startswith("persona-") and assistant_id != "default":
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid assistant ID. Available assistants: {', '.join(valid_assistants)}"
+                detail=f"Invalid assistant ID. Must be a persona-based assistant (persona-*) or 'default'"
             )
 
-        # TODO: Implement actual assistant switching logic
-        # For now, just log the switch and return success
+        # Store the current assistant selection (simple in-memory for now)
+        # In production, this would be stored in database or session
+        if not hasattr(switch_assistant, '_current_assistant'):
+            switch_assistant._current_assistant = None
+
+        previous_assistant = switch_assistant._current_assistant
+        switch_assistant._current_assistant = assistant_id
+
         logger.info(f"Switching to assistant: {assistant_id}, preserve_context: {preserve_context}")
+
+        # If switching to persona-based assistant, extract persona name
+        persona_name = None
+        if assistant_id.startswith("persona-"):
+            persona_name = assistant_id[8:]  # Remove "persona-" prefix
 
         return {
             "success": True,
-            "previous_assistant": "default",  # TODO: Get from service
+            "previous_assistant": previous_assistant,
             "new_assistant": assistant_id,
+            "persona_name": persona_name,
             "message": f"Switched to {assistant_id} assistant",
             "preserve_context": preserve_context
         }
@@ -111,16 +102,38 @@ async def switch_assistant(switch_data: Dict[str, Any] = Body(...)):
 async def get_current_assistant():
     """Get information about the currently active assistant."""
     try:
-        # TODO: Get current assistant from service/database
-        # For now, return default assistant info
+        # Get current assistant if one is set
+        current_assistant_id = None
+        if hasattr(switch_assistant, '_current_assistant'):
+            current_assistant_id = switch_assistant._current_assistant
+
+        if not current_assistant_id:
+            return {
+                "id": None,
+                "name": "No Assistant Selected",
+                "description": "Please select an assistant to begin",
+                "status": "offline",
+                "capabilities": [],
+                "model": None,
+                "switched_at": None
+            }
+
+        # If persona-based assistant, extract persona name
+        persona_name = None
+        assistant_name = "Unknown Assistant"
+        if current_assistant_id.startswith("persona-"):
+            persona_name = current_assistant_id[8:]  # Remove "persona-" prefix
+            assistant_name = persona_name
+
         current_assistant = {
-            "id": "default",
-            "name": "Default Assistant",
-            "description": "The standard AI assistant with balanced capabilities",
+            "id": current_assistant_id,
+            "name": assistant_name,
+            "description": f"Persona-based assistant: {persona_name}" if persona_name else "System assistant",
             "status": "active",
             "capabilities": ["chat", "movement", "object_interaction"],
             "model": "nano-gpt-4",
-            "switched_at": None  # When this assistant was activated
+            "persona_name": persona_name,
+            "switched_at": None  # TODO: Track switch time
         }
 
         return current_assistant

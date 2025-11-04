@@ -15,6 +15,7 @@ interface Assistant {
   persona_id?: string;
   status: 'active' | 'idle' | 'offline';
   avatar?: string;
+  imageUrl?: string;
 }
 
 interface AssistantSelectorProps {
@@ -36,6 +37,51 @@ export const AssistantSelector: React.FC<AssistantSelectorProps> = ({
 
   const { personas, selectedPersona, setSelectedPersona } = usePersonaStore();
 
+  // Avatar component with fallback
+  const AssistantAvatar: React.FC<{ assistant: Assistant; size?: 'sm' | 'md' | 'lg' }> = ({
+    assistant,
+    size = 'md'
+  }) => {
+    const [imageError, setImageError] = useState(false);
+
+    const sizeClasses = {
+      sm: 'w-6 h-6',
+      md: 'w-8 h-8',
+      lg: 'w-10 h-10'
+    };
+
+    const statusDotSizes = {
+      sm: 'w-2 h-2',
+      md: 'w-3 h-3',
+      lg: 'w-3 h-3'
+    };
+
+    if (assistant.imageUrl && !imageError) {
+      return (
+        <div className="relative">
+          <img
+            src={assistant.imageUrl}
+            alt={assistant.name}
+            className={`${sizeClasses[size]} rounded-full object-cover border-2 border-gray-300`}
+            onError={() => setImageError(true)}
+          />
+          <div className={`absolute -bottom-0.5 -right-0.5 ${statusDotSizes[size]} rounded-full border-2 border-white ${
+            assistant.status === 'active' ? 'bg-green-400' :
+            assistant.status === 'idle' ? 'bg-yellow-400' : 'bg-gray-400'
+          }`} />
+        </div>
+      );
+    }
+
+    // Fallback to status dot only
+    return (
+      <div className={`${statusDotSizes[size]} rounded-full ${
+        assistant.status === 'active' ? 'bg-green-400' :
+        assistant.status === 'idle' ? 'bg-yellow-400' : 'bg-gray-400'
+      }`} />
+    );
+  };
+
   // Load available assistants from API
   const loadAssistants = useCallback(async () => {
     setIsLoading(true);
@@ -56,14 +102,15 @@ export const AssistantSelector: React.FC<AssistantSelectorProps> = ({
         status: assistant.status as 'active' | 'idle' | 'offline'
       }));
 
-      // Add persona-based assistants
+      // Add persona-based assistants from test folder only
       if (personas.length > 0) {
         const personaAssistants = personas.map(persona => ({
           id: `persona-${persona.name}`,
           name: persona.name || 'Unnamed Persona',
           description: `Persona-based assistant`,
           persona_id: persona.name,
-          status: 'idle' as const
+          status: 'idle' as const,
+          imageUrl: `/api/personas/${encodeURIComponent(persona.name)}/image?expression=default`
         }));
 
         setAssistants([...apiAssistants, ...personaAssistants]);
@@ -74,6 +121,17 @@ export const AssistantSelector: React.FC<AssistantSelectorProps> = ({
       // Set the current assistant from API response
       if (data.current_assistant) {
         setSelectedAssistantId(data.current_assistant);
+      } else if (personas.length > 0) {
+        // If no current assistant and we have personas, select the first one
+        const firstPersonaId = `persona-${personas[0].name}`;
+        setSelectedAssistantId(firstPersonaId);
+
+        // Also load the first persona
+        try {
+          await usePersonaStore.getState().loadPersonaByName(personas[0].name);
+        } catch (err) {
+          console.warn('Failed to auto-load first persona:', err);
+        }
       }
 
     } catch (err) {
@@ -115,6 +173,16 @@ export const AssistantSelector: React.FC<AssistantSelectorProps> = ({
     // Send assistant change to backend API
     try {
       console.log(`Switching to assistant: ${assistant.name}`);
+
+      // Update assistant status to active immediately for UI feedback
+      setAssistants(prevAssistants =>
+        prevAssistants.map(a => ({
+          ...a,
+          status: a.id === assistantId ? 'active' :
+                  a.status === 'active' ? 'idle' : a.status
+        }))
+      );
+
       const response = await fetch('/api/assistant/switch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -135,6 +203,14 @@ export const AssistantSelector: React.FC<AssistantSelectorProps> = ({
     } catch (err) {
       console.error('Error switching assistant:', err);
       setError(err instanceof Error ? err.message : 'Failed to switch assistant');
+
+      // Revert status changes on error
+      setAssistants(prevAssistants =>
+        prevAssistants.map(a => ({
+          ...a,
+          status: 'idle'
+        }))
+      );
     }
   }, [assistants, personas, selectedPersona, setSelectedPersona, onAssistantChange]);
 
@@ -148,10 +224,11 @@ export const AssistantSelector: React.FC<AssistantSelectorProps> = ({
           className="flex items-center space-x-2 px-3 py-1 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
           disabled={isLoading}
         >
-          <div className={`w-2 h-2 rounded-full ${
-            selectedAssistant?.status === 'active' ? 'bg-green-400' :
-            selectedAssistant?.status === 'idle' ? 'bg-yellow-400' : 'bg-gray-400'
-          }`} />
+          {selectedAssistant ? (
+            <AssistantAvatar assistant={selectedAssistant} size="sm" />
+          ) : (
+            <div className="w-2 h-2 rounded-full bg-gray-400" />
+          )}
           <span className="text-sm font-medium text-gray-700">
             {isLoading ? 'Loading...' : selectedAssistant?.name || 'Select Assistant'}
           </span>
@@ -172,10 +249,7 @@ export const AssistantSelector: React.FC<AssistantSelectorProps> = ({
                   }`}
                 >
                   <div className="flex items-center space-x-3">
-                    <div className={`w-2 h-2 rounded-full ${
-                      assistant.status === 'active' ? 'bg-green-400' :
-                      assistant.status === 'idle' ? 'bg-yellow-400' : 'bg-gray-400'
-                    }`} />
+                    <AssistantAvatar assistant={assistant} size="sm" />
                     <div className="flex-1">
                       <div className="font-medium">{assistant.name}</div>
                       {assistant.description && (
@@ -209,10 +283,7 @@ export const AssistantSelector: React.FC<AssistantSelectorProps> = ({
           <div className="flex items-center space-x-3">
             {selectedAssistant ? (
               <>
-                <div className={`w-3 h-3 rounded-full ${
-                  selectedAssistant.status === 'active' ? 'bg-green-400' :
-                  selectedAssistant.status === 'idle' ? 'bg-yellow-400' : 'bg-gray-400'
-                }`} />
+                <AssistantAvatar assistant={selectedAssistant} size="md" />
                 <div className="text-left">
                   <div className="font-medium text-gray-900">{selectedAssistant.name}</div>
                   {selectedAssistant.description && (
@@ -246,10 +317,7 @@ export const AssistantSelector: React.FC<AssistantSelectorProps> = ({
                   }`}
                 >
                   <div className="flex items-center space-x-3">
-                    <div className={`w-3 h-3 rounded-full ${
-                      assistant.status === 'active' ? 'bg-green-400' :
-                      assistant.status === 'idle' ? 'bg-yellow-400' : 'bg-gray-400'
-                    }`} />
+                    <AssistantAvatar assistant={assistant} size="md" />
                     <div className="flex-1">
                       <div className="font-medium">{assistant.name}</div>
                       {assistant.description && (
