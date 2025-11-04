@@ -7,10 +7,12 @@
 
 import React, { useState, useCallback } from 'react';
 import { useLayoutConfig } from '../../hooks/useDeviceDetection';
+import { useFloorPlanStore } from '../../stores/floorPlanStore';
 
 // Phase 12B Components
 const FloorPlanContainer = React.lazy(() => import('../FloorPlan/FloorPlanContainer'));
 const ChatContainer = React.lazy(() => import('../Chat/ChatContainer'));
+const AssistantSelector = React.lazy(() => import('../AssistantSelection/AssistantSelector'));
 
 interface DesktopLayoutProps {
   children?: React.ReactNode;
@@ -21,8 +23,10 @@ interface DesktopLayoutProps {
  */
 export const DesktopLayout: React.FC<DesktopLayoutProps> = ({ children }) => {
   const layoutConfig = useLayoutConfig();
+  const { currentFloorPlan } = useFloorPlanStore();
   const [sidebarWidth, setSidebarWidth] = useState(30); // Percentage
   const [isResizing, setIsResizing] = useState(false);
+  const [showFloorPlanOptions, setShowFloorPlanOptions] = useState(false);
 
   // Handle panel resizing
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -58,37 +62,78 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({ children }) => {
         style={{ width: `${floorPlanWidth}%` }}
       >
         {/* Floor Plan Header */}
-        <div className="floor-plan-header bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <h1 className="text-lg font-semibold text-gray-800">DeskMate</h1>
+        <div className="floor-plan-header bg-white border-b border-gray-200 px-4 py-3">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center space-x-4">
+              <h1 className="text-lg font-semibold text-gray-800">DeskMate</h1>
 
-            {/* Room Navigation Tabs (placeholder) */}
-            <div className="flex space-x-2">
-              <button className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-md border border-blue-200">
-                Living Room
+              {/* Current Floor Plan Display */}
+              {currentFloorPlan && (
+                <div className="text-sm text-gray-600">
+                  <span className="font-medium">{currentFloorPlan.name}</span>
+                  <span className="text-gray-400 ml-2">•</span>
+                  <span className="ml-2">{currentFloorPlan.rooms.length} rooms</span>
+                </div>
+              )}
+            </div>
+
+            {/* Floor Plan Controls */}
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setShowFloorPlanOptions(!showFloorPlanOptions)}
+                className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-md border border-blue-200 hover:bg-blue-200"
+              >
+                Floor Plans
               </button>
-              <button className="px-3 py-1 text-sm bg-gray-100 text-gray-600 rounded-md border border-gray-200 hover:bg-gray-200">
-                Kitchen
-              </button>
-              <button className="px-3 py-1 text-sm bg-gray-100 text-gray-600 rounded-md border border-gray-200 hover:bg-gray-200">
-                Bedroom
+              <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+                </svg>
               </button>
             </div>
           </div>
 
-          {/* Floor Plan Controls */}
-          <div className="flex items-center space-x-2">
-            <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded">
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-              </svg>
-            </button>
-            <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded">
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
-              </svg>
-            </button>
-          </div>
+          {/* Floor Plan Options Dropdown */}
+          {showFloorPlanOptions && (
+            <div className="mb-3 p-3 bg-gray-50 rounded-lg border">
+              <div className="text-sm font-medium text-gray-700 mb-2">Available Floor Plans</div>
+              <div className="space-y-1">
+                <button className="w-full text-left px-3 py-2 text-sm bg-white rounded border hover:bg-gray-50">
+                  🏠 Studio Apartment
+                </button>
+                <button className="w-full text-left px-3 py-2 text-sm bg-white rounded border hover:bg-gray-50">
+                  🏡 Modern House
+                </button>
+                <button className="w-full text-left px-3 py-2 text-sm bg-white rounded border hover:bg-gray-50">
+                  🏢 Office Space
+                </button>
+              </div>
+              <button
+                onClick={() => setShowFloorPlanOptions(false)}
+                className="mt-2 text-xs text-gray-500 hover:text-gray-700"
+              >
+                Close
+              </button>
+            </div>
+          )}
+
+          {/* Room Navigation Tabs */}
+          {currentFloorPlan && (
+            <div className="flex space-x-2">
+              {currentFloorPlan.rooms.map((room, index) => (
+                <button
+                  key={room.id}
+                  className={`px-3 py-1 text-sm rounded-md border ${
+                    index === 0
+                      ? 'bg-blue-100 text-blue-700 border-blue-200'
+                      : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                  }`}
+                >
+                  {room.name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Floor Plan Content */}
@@ -145,30 +190,49 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({ children }) => {
         style={{ width: `${sidebarWidth}%` }}
       >
         {/* Chat Header */}
-        <div className="chat-header bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            {/* Assistant Avatar */}
-            <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
-              <span className="text-white text-sm font-medium">AI</span>
-            </div>
-            <div>
-              <h2 className="font-medium text-gray-800">Assistant</h2>
-              <p className="text-xs text-gray-500">Online</p>
-            </div>
+        <div className="chat-header bg-white border-b border-gray-200 px-4 py-3">
+          {/* Assistant Selection */}
+          <div className="mb-3">
+            <React.Suspense
+              fallback={
+                <div className="flex items-center space-x-2">
+                  <div className="w-4 h-4 bg-gray-200 rounded animate-pulse"></div>
+                  <div className="h-4 bg-gray-200 rounded w-24 animate-pulse"></div>
+                </div>
+              }
+            >
+              <AssistantSelector
+                compact={true}
+                onAssistantChange={(assistantId) => {
+                  console.log('Assistant changed to:', assistantId);
+                }}
+              />
+            </React.Suspense>
           </div>
 
           {/* Chat Controls */}
-          <div className="flex items-center space-x-2">
-            <button className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded">
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" clipRule="evenodd" />
-              </svg>
-            </button>
-            <button className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded">
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-              </svg>
-            </button>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                <span className="text-white text-xs font-medium">AI</span>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Chat Assistant</p>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <button className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" clipRule="evenodd" />
+                </svg>
+              </button>
+              <button className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -191,6 +255,14 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({ children }) => {
 
       {/* Render children if provided */}
       {children}
+
+      {/* Click outside to close floor plan options */}
+      {showFloorPlanOptions && (
+        <div
+          className="fixed inset-0 z-10"
+          onClick={() => setShowFloorPlanOptions(false)}
+        />
+      )}
 
       {/* Desktop-specific styles */}
       <style>

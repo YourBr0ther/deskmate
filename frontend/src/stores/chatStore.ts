@@ -496,8 +496,9 @@ function handleWebSocketMessage(message: any) {
       break;
 
     case 'assistant_state':
-      // Handle assistant state updates - update room store
+      // Handle assistant state updates - update both stores
       try {
+        // Update legacy roomStore for backward compatibility
         import('./roomStore').then(({ useRoomStore }) => {
           const roomStore = useRoomStore.getState();
 
@@ -514,10 +515,18 @@ function handleWebSocketMessage(message: any) {
             roomStore.setAssistantPosition({ x: data.position.x, y: data.position.y });
           }
         }).catch(error => {
-          console.error('Error updating assistant state:', error);
+          console.error('Error updating room store:', error);
+        });
+
+        // Update new FloorPlanStore with coordinate conversion
+        import('./floorPlanStore').then(({ useFloorPlanStore }) => {
+          const floorPlanStore = useFloorPlanStore.getState();
+          floorPlanStore.syncAssistantFromBackend(data);
+        }).catch(error => {
+          console.error('Error updating floor plan store:', error);
         });
       } catch (error) {
-        console.error('Error importing room store:', error);
+        console.error('Error importing stores:', error);
       }
       break;
 

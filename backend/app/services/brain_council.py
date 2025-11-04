@@ -15,7 +15,8 @@ The council returns structured responses that drive both chat and room actions.
 
 import logging
 import json
-from typing import Dict, List, Optional, Any
+import math
+from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
 
 from app.services.assistant_service import assistant_service
@@ -24,6 +25,71 @@ from app.services.llm_manager import llm_manager, ChatMessage
 from app.services.conversation_memory import conversation_memory
 
 logger = logging.getLogger(__name__)
+
+
+class CoordinateSystem:
+    """Utility class for handling different coordinate systems."""
+
+    # Grid system constants (legacy)
+    GRID_WIDTH = 64
+    GRID_HEIGHT = 16
+    GRID_CELL_SIZE = 30  # pixels per cell
+
+    # Open plan constants (new system)
+    DEFAULT_FLOOR_WIDTH = 1300  # pixels
+    DEFAULT_FLOOR_HEIGHT = 600  # pixels
+
+    @staticmethod
+    def is_grid_coordinate(x: float, y: float) -> bool:
+        """Check if coordinates appear to be grid-based (small integers)."""
+        return (
+            isinstance(x, int) and isinstance(y, int) and
+            0 <= x < CoordinateSystem.GRID_WIDTH and
+            0 <= y < CoordinateSystem.GRID_HEIGHT
+        )
+
+    @staticmethod
+    def calculate_distance(pos1: Dict[str, float], pos2: Dict[str, float]) -> float:
+        """Calculate distance between two positions, handling both coordinate systems."""
+        x1, y1 = pos1.get("x", 0), pos1.get("y", 0)
+        x2, y2 = pos2.get("x", 0), pos2.get("y", 0)
+
+        # Use Euclidean distance for both systems
+        return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+
+    @staticmethod
+    def get_interaction_distance_threshold(assistant_pos: Dict[str, float]) -> float:
+        """Get distance threshold for interaction based on coordinate system."""
+        x, y = assistant_pos.get("x", 0), assistant_pos.get("y", 0)
+
+        if CoordinateSystem.is_grid_coordinate(x, y):
+            # Grid system: 2 cells distance
+            return 2.0
+        else:
+            # Pixel system: 80 pixels distance (about 2.5 grid cells)
+            return 80.0
+
+    @staticmethod
+    def get_nearby_distance_threshold(assistant_pos: Dict[str, float]) -> float:
+        """Get distance threshold for nearby objects based on coordinate system."""
+        x, y = assistant_pos.get("x", 0), assistant_pos.get("y", 0)
+
+        if CoordinateSystem.is_grid_coordinate(x, y):
+            # Grid system: 5 cells distance
+            return 5.0
+        else:
+            # Pixel system: 150 pixels distance (about 5 grid cells)
+            return 150.0
+
+    @staticmethod
+    def describe_coordinate_system(assistant_pos: Dict[str, float]) -> str:
+        """Describe which coordinate system is being used."""
+        x, y = assistant_pos.get("x", 0), assistant_pos.get("y", 0)
+
+        if CoordinateSystem.is_grid_coordinate(x, y):
+            return f"grid-based coordinates (64x16 cells, assistant at cell {int(x)},{int(y)})"
+        else:
+            return f"pixel-based coordinates (open floor plan, assistant at {int(x)},{int(y)} pixels)"
 
 
 class BrainCouncil:
@@ -143,8 +209,15 @@ class BrainCouncil:
             logger.error(f"Exception args: {e.args}")
             import traceback
             logger.error(f"Full traceback: {traceback.format_exc()}")
+            # Return fallback with sensible default position for open-plan system
             return {
-                "assistant": {"position": {"x": 32, "y": 8}, "facing": "right", "action": "idle", "mood": "neutral", "holding_object_id": None},
+                "assistant": {
+                    "position": {"x": 650, "y": 300},  # Center of typical floor plan
+                    "facing": "right",
+                    "action": "idle",
+                    "mood": "neutral",
+                    "holding_object_id": None
+                },
                 "room": {"objects": [], "object_states": {}, "timestamp": datetime.now().isoformat()}
             }
 
@@ -180,11 +253,13 @@ Creator: {persona_context.get('creator', 'Unknown')}
                     logger.warning(f"Object {obj.get('id', 'unknown')} has invalid position format: {obj}")
                     continue
 
-                # Calculate distance from assistant
+                # Calculate distance from assistant using coordinate-aware method
                 assistant_pos = context["assistant"]["position"]
-                distance = abs(obj_x - assistant_pos["x"]) + abs(obj_y - assistant_pos["y"])
+                obj_pos = {"x": obj_x, "y": obj_y}
+                distance = CoordinateSystem.calculate_distance(assistant_pos, obj_pos)
+                view_threshold = CoordinateSystem.get_nearby_distance_threshold(assistant_pos)
 
-                if distance <= 10:  # Within reasonable "view" distance
+                if distance <= view_threshold:  # Within reasonable "view" distance
                     states = context["room"]["object_states"].get(obj["id"], {})
                     state_desc = ", ".join([f"{k}:{v}" for k, v in states.items()]) if states else "default"
 
@@ -212,6 +287,7 @@ CURRENT CONTEXT:
 Assistant Position: ({context["assistant"]["position"]["x"]}, {context["assistant"]["position"]["y"]})
 Assistant Status: {context["assistant"]["action"]}, facing {context["assistant"]["facing"]}, mood: {context["assistant"]["mood"]}
 Holding: {context["assistant"]["holding_object_id"] or "nothing"}
+Coordinate System: {CoordinateSystem.describe_coordinate_system(context["assistant"]["position"])}
 
 VISIBLE OBJECTS:
 {chr(10).join(visible_objects) if visible_objects else "- No objects in immediate vicinity"}
@@ -223,7 +299,7 @@ COUNCIL PERSPECTIVES:
 2. MEMORY KEEPER: What relevant context from past interactions should inform this response? Any patterns or preferences to remember?
 
 3. SPATIAL REASONER: Analyze the spatial environment and object relationships:
-   - What objects are visible and within reach (distance ≤ 2)?
+   - What objects are visible and within interaction range?
    - Which objects are movable and could be picked up?
    - What surfaces or locations could objects be placed on?
    - Are there any spatial constraints or obstacles?
@@ -238,7 +314,7 @@ COUNCIL PERSPECTIVES:
 
 5. VALIDATOR: Validate all proposed actions for safety and feasibility:
    - Are movement actions possible given obstacles and room boundaries?
-   - Is the assistant close enough for object interactions (distance ≤ 2)?
+   - Is the assistant close enough for object interactions?
    - For pick up: Is the object movable and assistant not already holding something?
    - For put down: Is the target location free of collisions and within reach?
    - Do all actions align with the persona and make logical sense?
@@ -406,13 +482,15 @@ The Memory Keeper has access to {retrieved_count} relevant past messages and {co
         goals = context.get("goals", [])
         action_count = context.get("action_count", 0)
 
-        # Get nearby objects for spatial awareness
+        # Get nearby objects for spatial awareness using coordinate-aware distance
         nearby_objects = []
         for obj in objects:
             obj_pos = obj.get("position", {})
-            distance = abs(obj_pos.get("x", 50) - position["x"]) + abs(obj_pos.get("y", 50) - position["y"])
-            if distance <= 5:  # Within 5 cells
-                nearby_objects.append(f"{obj.get('name', 'object')} at ({obj_pos.get('x')}, {obj_pos.get('y')})")
+            if obj_pos:  # Only process objects with valid positions
+                distance = CoordinateSystem.calculate_distance(position, obj_pos)
+                nearby_threshold = CoordinateSystem.get_nearby_distance_threshold(position)
+                if distance <= nearby_threshold:
+                    nearby_objects.append(f"{obj.get('name', 'object')} at ({obj_pos.get('x')}, {obj_pos.get('y')})")
 
         prompt = f"""You are an AI assistant in idle mode, thinking and acting autonomously while the user is away.
 

@@ -7,7 +7,10 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useDeviceDetection } from '../../hooks/useDeviceDetection';
+import { useChatStore } from '../../stores/chatStore';
+import { useFloorPlanStore } from '../../stores/floorPlanStore';
 import { FloorPlan, Assistant, Position } from '../../types/floorPlan';
+import { pixelToGrid } from '../../utils/coordinateConversion';
 import TopDownRenderer from './TopDownRenderer';
 
 
@@ -24,11 +27,17 @@ export const FloorPlanContainer: React.FC<FloorPlanContainerProps> = ({
   style = {}
 }) => {
   const deviceInfo = useDeviceDetection();
-  const [floorPlan, setFloorPlan] = useState<FloorPlan | null>(null);
-  const [assistant, setAssistant] = useState<Assistant | null>(null);
-  const [selectedObject, setSelectedObject] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { sendAssistantMove, isConnected } = useChatStore();
+  const {
+    currentFloorPlan,
+    assistant,
+    selectedObjectId,
+    isLoading,
+    error,
+    selectObject,
+    updateAssistantPosition,
+    setCurrentFloorPlan
+  } = useFloorPlanStore();
 
   // Load floor plan data
   useEffect(() => {
@@ -36,9 +45,9 @@ export const FloorPlanContainer: React.FC<FloorPlanContainerProps> = ({
   }, []);
 
   const loadFloorPlanData = async () => {
+    if (currentFloorPlan) return; // Already have a floor plan
+
     try {
-      setLoading(true);
-      setError(null);
 
       // For now, use mock data. In real implementation, this would fetch from API
       const mockFloorPlan: FloorPlan = {
@@ -181,45 +190,44 @@ export const FloorPlanContainer: React.FC<FloorPlanContainerProps> = ({
         }
       };
 
-      setFloorPlan(mockFloorPlan);
-      setAssistant(mockAssistant);
+      setCurrentFloorPlan(mockFloorPlan);
 
       // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 500));
 
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load floor plan');
-    } finally {
-      setLoading(false);
+      console.error('Failed to load floor plan:', err);
     }
   };
 
   // Handle object selection
   const handleObjectClick = useCallback((objectId: string) => {
-    setSelectedObject(prev => prev === objectId ? null : objectId);
+    selectObject(selectedObjectId === objectId ? null : objectId);
     console.log('Object clicked:', objectId);
-  }, []);
+  }, [selectObject, selectedObjectId]);
 
   // Handle position clicks (for movement)
   const handlePositionClick = useCallback((position: Position) => {
-    console.log('Position clicked:', position);
-    // In real implementation, this would trigger assistant movement
-  }, []);
+    console.log('Position clicked (pixels):', position);
 
-  // Handle assistant movement
+    // Convert pixel coordinates to grid coordinates for backend compatibility
+    const gridPosition = pixelToGrid(position, currentFloorPlan?.dimensions);
+    console.log('Converted to grid coordinates:', gridPosition);
+
+    // Send movement command via WebSocket if connected
+    if (isConnected) {
+      sendAssistantMove(gridPosition.x, gridPosition.y);
+    } else {
+      console.warn('Not connected to WebSocket - cannot send movement command');
+    }
+  }, [isConnected, sendAssistantMove, currentFloorPlan?.dimensions]);
+
+  // Handle assistant movement (local updates)
   const handleAssistantMove = useCallback((position: Position) => {
-    if (!assistant) return;
+    updateAssistantPosition(position);
+  }, [updateAssistantPosition]);
 
-    setAssistant(prev => prev ? {
-      ...prev,
-      location: {
-        ...prev.location,
-        position
-      }
-    } : null);
-  }, [assistant]);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="floor-plan-loading flex items-center justify-center w-full h-full bg-gray-100">
         <div className="text-center">
@@ -252,7 +260,7 @@ export const FloorPlanContainer: React.FC<FloorPlanContainerProps> = ({
     );
   }
 
-  if (!floorPlan || !assistant) {
+  if (!currentFloorPlan || !assistant) {
     return (
       <div className="floor-plan-empty flex items-center justify-center w-full h-full bg-gray-100">
         <p className="text-gray-500">No floor plan data available</p>
@@ -263,9 +271,9 @@ export const FloorPlanContainer: React.FC<FloorPlanContainerProps> = ({
   return (
     <div className={`floor-plan-container relative w-full h-full ${className}`} style={style}>
       <TopDownRenderer
-        floorPlan={floorPlan}
+        floorPlan={currentFloorPlan}
         assistant={assistant}
-        selectedObject={selectedObject || undefined}
+        selectedObject={selectedObjectId || undefined}
         onObjectClick={handleObjectClick}
         onPositionClick={handlePositionClick}
         onAssistantMove={handleAssistantMove}
@@ -273,14 +281,14 @@ export const FloorPlanContainer: React.FC<FloorPlanContainerProps> = ({
       />
 
       {/* Object info panel for selected objects */}
-      {selectedObject && (
+      {selectedObjectId && (
         <div className="absolute top-4 left-4 bg-white rounded-lg shadow-lg p-4 max-w-sm z-10">
           <div className="flex items-center justify-between mb-2">
             <h3 className="font-semibold text-gray-800">
-              {floorPlan.furniture.find(f => f.id === selectedObject)?.name || 'Object'}
+              {currentFloorPlan.furniture.find(f => f.id === selectedObjectId)?.name || 'Object'}
             </h3>
             <button
-              onClick={() => setSelectedObject(null)}
+              onClick={() => selectObject(null)}
               className="text-gray-500 hover:text-gray-700"
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -290,7 +298,7 @@ export const FloorPlanContainer: React.FC<FloorPlanContainerProps> = ({
           </div>
           <div className="text-sm text-gray-600 space-y-1">
             {(() => {
-              const obj = floorPlan.furniture.find(f => f.id === selectedObject);
+              const obj = currentFloorPlan.furniture.find(f => f.id === selectedObjectId);
               if (!obj) return null;
               return (
                 <>
@@ -308,11 +316,11 @@ export const FloorPlanContainer: React.FC<FloorPlanContainerProps> = ({
       {/* Development info overlay */}
       {process.env.NODE_ENV === 'development' && (
         <div className="absolute bottom-4 left-4 bg-black bg-opacity-75 text-white text-xs p-2 rounded z-10">
-          <div>Floor Plan: {floorPlan.name}</div>
-          <div>Rooms: {floorPlan.rooms.length}</div>
-          <div>Furniture: {floorPlan.furniture.length}</div>
+          <div>Floor Plan: {currentFloorPlan.name}</div>
+          <div>Rooms: {currentFloorPlan.rooms.length}</div>
+          <div>Furniture: {currentFloorPlan.furniture.length}</div>
           <div>Assistant: {assistant.location.position.x.toFixed(0)}, {assistant.location.position.y.toFixed(0)}</div>
-          {selectedObject && <div>Selected: {selectedObject}</div>}
+          {selectedObjectId && <div>Selected: {selectedObjectId}</div>}
         </div>
       )}
     </div>

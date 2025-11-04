@@ -19,6 +19,116 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/assistant", tags=["assistant"])
 
 
+@router.get("/list")
+async def list_available_assistants():
+    """Get list of all available assistants."""
+    try:
+        # For now, return a hardcoded list of available assistants
+        # In a real implementation, this could query a database or config
+        assistants = [
+            {
+                "id": "default",
+                "name": "Default Assistant",
+                "description": "The standard AI assistant with balanced capabilities",
+                "status": "active",
+                "capabilities": ["chat", "movement", "object_interaction"],
+                "model": "nano-gpt-4"
+            },
+            {
+                "id": "creative",
+                "name": "Creative Assistant",
+                "description": "Specialized in creative tasks and artistic endeavors",
+                "status": "available",
+                "capabilities": ["chat", "creative_writing", "art_generation"],
+                "model": "nano-gpt-4"
+            },
+            {
+                "id": "analytical",
+                "name": "Analytical Assistant",
+                "description": "Focused on data analysis and logical reasoning",
+                "status": "available",
+                "capabilities": ["chat", "data_analysis", "problem_solving"],
+                "model": "nano-gpt-4"
+            }
+        ]
+
+        return {
+            "assistants": assistants,
+            "count": len(assistants),
+            "current_assistant": "default"  # TODO: Get from service
+        }
+    except Exception as e:
+        logger.error(f"Error listing assistants: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list assistants")
+
+
+@router.post("/switch")
+async def switch_assistant(switch_data: Dict[str, Any] = Body(...)):
+    """
+    Switch to a different assistant.
+
+    Body:
+        {
+            "assistant_id": str,
+            "preserve_context": bool (optional, default true)
+        }
+    """
+    try:
+        assistant_id = switch_data.get("assistant_id")
+        preserve_context = switch_data.get("preserve_context", True)
+
+        if not assistant_id:
+            raise HTTPException(status_code=400, detail="Assistant ID is required")
+
+        # Validate assistant ID exists
+        valid_assistants = ["default", "creative", "analytical"]
+        if assistant_id not in valid_assistants:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid assistant ID. Available assistants: {', '.join(valid_assistants)}"
+            )
+
+        # TODO: Implement actual assistant switching logic
+        # For now, just log the switch and return success
+        logger.info(f"Switching to assistant: {assistant_id}, preserve_context: {preserve_context}")
+
+        return {
+            "success": True,
+            "previous_assistant": "default",  # TODO: Get from service
+            "new_assistant": assistant_id,
+            "message": f"Switched to {assistant_id} assistant",
+            "preserve_context": preserve_context
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error switching assistant: {e}")
+        raise HTTPException(status_code=500, detail="Failed to switch assistant")
+
+
+@router.get("/current")
+async def get_current_assistant():
+    """Get information about the currently active assistant."""
+    try:
+        # TODO: Get current assistant from service/database
+        # For now, return default assistant info
+        current_assistant = {
+            "id": "default",
+            "name": "Default Assistant",
+            "description": "The standard AI assistant with balanced capabilities",
+            "status": "active",
+            "capabilities": ["chat", "movement", "object_interaction"],
+            "model": "nano-gpt-4",
+            "switched_at": None  # When this assistant was activated
+        }
+
+        return current_assistant
+    except Exception as e:
+        logger.error(f"Error getting current assistant: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get current assistant")
+
+
 @router.get("/state")
 async def get_assistant_state():
     """Get current assistant state including position, mood, and activity."""
