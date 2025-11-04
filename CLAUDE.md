@@ -8,162 +8,302 @@ DeskMate is a virtual AI companion that lives in a simulated room environment on
 
 ## Current Status
 
-**Phase 1: COMPLETE ✅** - Foundation & Infrastructure implemented and tested.
-**Next**: Phase 2 - Persona System & Basic Frontend
+**Phase 1-7: COMPLETE ✅** - Foundation through Brain Council System
+**Current**: Phase 7 complete with full Brain Council reasoning and action execution
+**Next**: Phase 8 - Action Execution & Interaction (object manipulation)
+
+### Completed Phases:
+- ✅ **Phase 1**: Foundation & Infrastructure (Docker, FastAPI, databases)
+- ✅ **Phase 2**: Persona System & Basic Frontend (SillyTavern V2 support)
+- ✅ **Phase 3**: Room Environment & Objects (64x16 grid, object management)
+- ✅ **Phase 4**: Assistant Movement & Pathfinding (A* algorithm)
+- ✅ **Phase 5**: LLM Integration (Nano-GPT + Ollama dual provider)
+- ✅ **Phase 6**: Chat System & Memory (conversation memory, vector search)
+- ✅ **Phase 7**: Brain Council System (multi-perspective AI reasoning, action execution)
 
 ## Git Repository
 
 - **Remote**: https://github.com/YourBr0ther/deskmate.git
-- **Branch**: main  
-- **Commit**: Phase 1 complete with Docker, FastAPI, databases, and tests
+- **Branch**: main
+- **Latest Commit**: Phase 7 complete with Brain Council System and Action Execution
 
 ## Development Commands
 
-Since no code exists yet, here are the commands to use during development:
+### Docker Development (Recommended)
 
-### Initial Setup
+**Full rebuild for development testing:**
 ```bash
-# Create project structure
-mkdir -p backend/app/{models,services,api,db,utils}
-mkdir -p frontend/src/{components,hooks,stores,utils,types}
-mkdir -p data/{personas,sprites/objects,sprites/expressions,rooms}
-mkdir -p docs
+# Stop services and rebuild completely (ensures clean testing environment)
+docker-compose down
+docker-compose build --no-cache
+docker-compose up -d
 
-# Backend setup (once created)
+# Quick restart (when only code changes, no dependencies)
+docker-compose restart deskmate-backend deskmate-frontend
+
+# View logs during development
+docker-compose logs -f deskmate-backend
+docker-compose logs -f deskmate-frontend
+
+# Clean shutdown
+docker-compose down
+```
+
+**Development workflow with rebuilds:**
+```bash
+# Make code changes, then rebuild and test
+docker-compose down && docker-compose build --no-cache && docker-compose up -d
+
+# Quick check if services are running
+docker-compose ps
+
+# Access services
+# Frontend: http://localhost:3000
+# Backend API: http://localhost:8000
+# Backend Docs: http://localhost:8000/docs
+```
+
+### Local Development (Alternative)
+
+```bash
+# Backend setup
 cd backend
 python -m venv venv
 source venv/bin/activate  # or venv\Scripts\activate on Windows
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 
-# Frontend setup (once created)
+# Frontend setup
 cd frontend
 npm install
-npm run dev  # Development server
-npm run electron:dev  # Electron development (1920x480 kiosk)
-npm run build
-npm run test
+npm run dev  # Development server at http://localhost:3000
 
-# Docker setup
-docker-compose up -d  # Start all services
-docker-compose logs -f  # View logs
-docker-compose down  # Stop services
-
-# Git workflow
-git status  # Check repository status
-git log --oneline  # View commit history  
-git add .  # Stage changes
-git commit -m "message"  # Commit with message
-git push origin main  # Push to remote
+# Databases (requires Docker)
+docker-compose up -d deskmate-postgres deskmate-qdrant
 ```
 
 ### Testing Commands
+
 ```bash
+# Phase 7 Brain Council Testing
+./test_phase7.sh                    # Comprehensive Brain Council test suite
+./test_movement_visual.sh           # Visual movement test
+python3 test_websocket_interactive.py  # Interactive WebSocket test
+
 # Backend tests
 cd backend
 pytest -v
-pytest --cov=app tests/  # With coverage
+pytest --cov=app tests/
 
 # Frontend tests
 cd frontend
 npm run test
-npm run test:e2e  # Playwright tests
-
-# Linting
-cd backend
-ruff check .
-mypy app/
-
-cd frontend
 npm run lint
 npm run typecheck
+
+# API testing
+curl http://localhost:8000/health     # Health check
+curl http://localhost:8000/brain/test # Brain Council test
 ```
 
 ### Memory Management Commands
-```bash
-# Backend memory clearing (CLI)
-cd backend
-python scripts/clear_memory.py --stats                # Show memory statistics
-python scripts/clear_memory.py --current              # Clear current chat only
-python scripts/clear_memory.py --persona "Alice"      # Clear specific persona
-python scripts/clear_memory.py --all                  # Purge ALL memory (DESTRUCTIVE)
 
+```bash
 # API endpoints for memory clearing
 curl -X POST http://localhost:8000/conversation/memory/clear          # Clear current
 curl -X POST http://localhost:8000/conversation/memory/clear-all      # Clear all (DESTRUCTIVE)
 curl -X POST "http://localhost:8000/conversation/memory/clear-persona?persona_name=Alice"  # Clear persona
+
+# Memory analysis
+curl -X POST http://localhost:8000/brain/analyze -H "Content-Type: application/json" -d '{"include_memory": true}'
 
 # Frontend UI: Use trash icon in chat header for clearing options
 ```
 
 ## Architecture Overview
 
-### Brain Council System
+### Brain Council System (Phase 7)
 DeskMate uses a novel "Brain Council" AI reasoning pattern where 5 specialized council members collaborate:
-1. **Personality Core** - Maintains character consistency
-2. **Memory Keeper** - Retrieves relevant context from vector DB
-3. **Spatial Reasoner** - Understands room layout and object visibility
-4. **Action Planner** - Proposes possible actions
-5. **Validator** - Ensures actions make sense
+1. **Personality Core** - Maintains character consistency with active persona
+2. **Memory Keeper** - Retrieves relevant context from vector DB and conversation history
+3. **Spatial Reasoner** - Understands room layout, object visibility, and movement constraints
+4. **Action Planner** - Proposes possible actions (movement, interaction, state changes)
+5. **Validator** - Ensures actions make sense and are physically possible
 
-The council returns structured JSON responses that drive assistant behavior.
+The council returns structured JSON responses that drive both chat responses and room actions.
 
 ### Key Components
 
 **Backend (Python/FastAPI):**
-- `app/services/brain_council.py` - Multi-perspective AI reasoning
-- `app/services/pathfinding.py` - A* algorithm for movement
-- `app/services/memory.py` - Qdrant vector DB integration
-- `app/services/llm_manager.py` - Handles Nano-GPT API and Ollama
-- `app/models/persona.py` - SillyTavern V2 persona card parsing
+- `app/services/brain_council.py` - Multi-perspective AI reasoning system
+- `app/services/action_executor.py` - Robust action execution pipeline
+- `app/services/pathfinding.py` - A* algorithm for movement with obstacle avoidance
+- `app/services/conversation_memory.py` - Qdrant vector DB integration with semantic search
+- `app/services/llm_manager.py` - Dual LLM provider (Nano-GPT API and Ollama)
+- `app/models/assistant.py` - Assistant state management and tracking
+- `app/api/brain_council.py` - Brain Council API endpoints
+- `app/api/websocket.py` - Real-time communication with Brain Council integration
 
-**Frontend (React/Electron):**
-- `src/components/Grid.tsx` - 64x16 room grid (1920x480 @ 30px/cell)
-- `src/components/Companion.tsx` - 640x480 companion panel
-- `src/stores/roomStore.ts` - Zustand state for objects/assistant
-- `src/hooks/useWebSocket.ts` - Real-time communication
+**Frontend (React/TypeScript):**
+- `src/components/Grid.tsx` - 64x16 room grid visualization (1920x480 @ 30px/cell)
+- `src/stores/roomStore.ts` - Zustand state management for room objects and assistant
+- `src/hooks/useWebSocket.ts` - Real-time WebSocket communication
+- `src/components/Chat/` - Chat interface with streaming support
 
 **Databases:**
-- PostgreSQL - Metadata (objects, positions, states)
-- Qdrant - Vector storage (memories, dreams)
+- PostgreSQL - Metadata (objects, positions, states, assistant tracking)
+- Qdrant - Vector storage (conversation memories with semantic search)
+
+### Action Execution System
+
+**Supported Actions:**
+- **Movement**: Pathfinding with A* algorithm and obstacle avoidance
+- **Object Interaction**: Activate, examine, use objects with state changes
+- **State Changes**: Modify object properties (power, open/closed, etc.)
+- **Expression Changes**: Update assistant mood and expression
+- **Pick Up/Put Down**: Object manipulation (planned for Phase 8)
 
 ### Dual Mode Operation
 
 **Active Mode:**
-- Real-time chat with primary LLM
-- User-driven interactions
-- Full brain council reasoning
+- Real-time chat with primary LLM (Nano-GPT or Ollama)
+- User-driven interactions through Brain Council
+- Full multi-perspective reasoning
+- Immediate action execution
 
-**Idle Mode:**
+**Idle Mode:** (Planned for Phase 9)
 - Triggers after 10 minutes inactivity or `/idle` command
 - Uses lightweight Ollama models (phi-3, gemma-2b)
-- Slower autonomous actions (1 per 2-5 minutes)
+- Autonomous actions based on goals and environment
 - Actions stored as "dreams" that expire after 24 hours
+
+## API Endpoints
+
+### Core APIs
+- `GET /health` - System health check
+- `GET /chat/models` - Available LLM models
+- `POST /chat/simple` - Quick chat testing
+
+### Brain Council APIs
+- `GET /brain/test` - Test Brain Council functionality
+- `POST /brain/process` - Process message through Brain Council
+- `POST /brain/analyze` - Analyze current context and memory
+
+### Memory & Conversation
+- `GET /conversation/memory/stats` - Memory statistics
+- `POST /conversation/memory/clear` - Clear current conversation
+- `GET /conversation/history` - Chat history for frontend
+
+### WebSocket
+- `WS /ws` - Real-time chat with Brain Council integration
+
+## Testing Framework
+
+### Phase 7 Verification
+```bash
+# Test Brain Council reasoning
+./test_phase7.sh
+
+# Visual movement test (watch assistant move in grid)
+./test_movement_visual.sh
+
+# Interactive WebSocket testing
+python3 test_websocket_interactive.py
+```
+
+### What to Test
+1. **Brain Council Reasoning** - Multi-perspective analysis in responses
+2. **Action Generation** - Appropriate actions for user requests
+3. **Memory Integration** - Context awareness from past conversations
+4. **Movement Execution** - Pathfinding and grid position updates
+5. **Object Interaction** - State changes and room updates
+6. **Real-time Updates** - WebSocket synchronization
 
 ## Implementation Notes
 
-1. **Start with Phase 1** - Docker setup, basic FastAPI, database connections
-2. **Persona Cards** - Use Pillow to extract PNG tEXt/iTXt chunks for SillyTavern V2 format
-3. **Grid Rendering** - Consider HTML5 Canvas for performance
-4. **Pathfinding** - Cache common paths, use priority queue
-5. **Memory Search** - Implement hybrid semantic + keyword search
-6. **WebSocket** - Add reconnection logic with exponential backoff
-7. **Object States** - Simple strings like "open/closed", "on/off", "red/blue"
+### Current Working Features
+1. **Multi-LLM Support** - Nano-GPT and Ollama with model switching
+2. **Persona System** - SillyTavern V2 card support with PNG metadata
+3. **Room Grid System** - 64x16 cells with object positioning
+4. **Pathfinding** - A* algorithm with obstacle avoidance
+5. **Conversation Memory** - Vector database with semantic search
+6. **Brain Council** - 5-member reasoning system with action execution
+7. **Real-time Chat** - WebSocket with streaming responses
+8. **Object Management** - Create, position, and interact with room objects
+
+### Development Priorities
+1. **Phase 8**: Complete object manipulation and interaction system
+2. **Phase 9**: Implement idle mode and autonomous behavior
+3. **Phase 10**: Polish UI/UX and performance optimization
+4. **Phase 11**: Comprehensive testing and documentation
+5. **Phase 12**: Production deployment and advanced features
 
 ## Key Files to Reference
 
-- `/Users/christophervance/deskmate/DESKMATE_SPEC.md` - Complete 39KB specification
-- Review Phase 1-12 development plan in spec before implementing features
-- Brain Council prompt structure and JSON schema in spec
-- Object creation prompt template in spec
+- `/Users/christophervance/deskmate/DESKMATE_SPEC.md` - Complete specification (39KB)
+- Brain Council implementation in `backend/app/services/brain_council.py`
+- Action execution in `backend/app/services/action_executor.py`
+- WebSocket integration in `backend/app/api/websocket.py`
+- Grid visualization in `frontend/src/components/Grid.tsx`
 
 ## Important Considerations
 
-- Target resolution is exactly 1920x480 (kiosk mode)
-- All objects must fit in 64x16 grid system
-- Maintain SillyTavern V2 compatibility for personas
-- Keep idle mode lightweight for continuous operation
-- Dreams are separate from real memories in Qdrant
+- **Target Resolution**: Exactly 1920x480 (kiosk mode for secondary monitor)
+- **Grid System**: All objects and assistant fit in 64x16 grid
+- **Persona Compatibility**: Maintain SillyTavern V2 format support
+- **Memory Efficiency**: Use vector search for relevant context retrieval
+- **Real-time Updates**: All actions broadcast via WebSocket
+- **Security**: Never commit API keys or sensitive credentials
+
+## Environment Variables
+
+**Required for Backend:**
+```bash
+NANO_GPT_API_KEY=your_api_key_here  # Get from nano-gpt.com
+OLLAMA_URL=http://localhost:11434   # Local Ollama instance
+DATABASE_URL=postgresql://...       # PostgreSQL connection
+QDRANT_URL=http://localhost:6333    # Qdrant vector database
+```
+
+**Docker Compose handles all database URLs automatically**
+
+**Setting API Key:**
+```bash
+# Method 1: Environment variable (recommended for CI/CD)
+export NANO_GPT_API_KEY="your_api_key_here"
+
+# Method 2: Create .env.local file (gitignored)
+echo "NANO_GPT_API_KEY=your_api_key_here" > .env.local
+
+# Method 3: Update backend/.env for local development (gitignored)
+# This file exists and is already configured for local use
+```
+
+## Troubleshooting
+
+### Common Issues
+1. **API Key Issues**: Check docker-compose.yml and ensure key is set
+2. **Database Connection**: Ensure PostgreSQL and Qdrant containers are running
+3. **WebSocket Errors**: Check browser console and backend logs
+4. **Movement Issues**: Verify pathfinding and obstacle detection
+5. **Memory Issues**: Check Qdrant connection and embedding generation
+
+### Debug Commands
+```bash
+# Check service status
+docker-compose ps
+
+# View real-time logs
+docker-compose logs -f deskmate-backend
+
+# Test individual components
+curl http://localhost:8000/brain/test
+curl http://localhost:8000/conversation/memory/stats
+
+# Database connections
+docker exec -it deskmate-postgres psql -U deskmate -d deskmate
+curl http://localhost:6333/collections
+```
 
 ## Context Window Management
 
@@ -195,26 +335,26 @@ The council returns structured JSON responses that drive assistant behavior.
 2. Create a `CONTEXT_CHECKPOINT.md` file:
    ```markdown
    # Context Checkpoint - [Date]
-   
+
    ## Current Task
    [Exact description of what you're implementing/fixing]
-   
+
    ## Modified Files
    - path/to/file1.py - [what was changed]
    - path/to/file2.tsx - [what was changed]
-   
+
    ## Completed Steps
    1. [What was accomplished]
    2. [What was tested]
-   
+
    ## Next Steps
    1. [Immediate next action]
    2. [Following actions]
-   
+
    ## Test Commands
    - `command to verify current work`
    - `command to run tests`
-   
+
    ## Known Issues
    - [Any bugs or blockers encountered]
    ```
@@ -228,7 +368,9 @@ The council returns structured JSON responses that drive assistant behavior.
 
 ### Best Practices
 
-- **Write Incremental Commits** - Even if not pushing, commit work regularly with descriptive messages
+- **Always Rebuild for Testing** - Use `docker-compose down && docker-compose build --no-cache && docker-compose up -d` when testing changes
+- **Write Incremental Commits** - Commit work regularly with descriptive messages
 - **Update Todo List Frequently** - Keep todos current to track progress
 - **Document Complex Logic** - Add comments for intricate implementations
 - **Test After Each Feature** - Verify work before moving on
+- **Use Phase Test Scripts** - Run phase-specific tests to verify functionality

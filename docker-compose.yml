@@ -21,7 +21,7 @@ services:
       - QDRANT_URL=http://qdrant:6333
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - PYTHONUNBUFFERED=1
-      - NANO_GPT_API_KEY=d8fc1c5a-ffe0-40c4-81d7-a246c46873b6
+      - NANO_GPT_API_KEY=${NANO_GPT_API_KEY:-your_nano_gpt_api_key_here}
       - NANO_GPT_BASE_URL=https://api.nanogpt.ai/v1
       - DEFAULT_LLM_MODEL=llama3.2:latest
       - LLM_MAX_TOKENS=2048
