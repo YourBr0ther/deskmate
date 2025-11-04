@@ -2,13 +2,15 @@
 SQLAlchemy model for the assistant state and tracking.
 
 This module defines the database schema for the AI assistant including
-position, status, mood, and activity tracking.
+position, status, mood, and activity tracking for multi-room environments
+with continuous coordinate positioning.
 """
 
-from sqlalchemy import Column, String, Integer, Boolean, Text, DateTime, JSON, Float
+from sqlalchemy import Column, String, Integer, Boolean, Text, DateTime, JSON, Float, ForeignKey
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 
 from app.db.base import Base
 
@@ -18,24 +20,28 @@ class AssistantState(Base):
     Current state of the AI assistant.
 
     Tracks position, mood, activity, and other dynamic properties
-    that change as the assistant moves and interacts.
+    that change as the assistant moves and interacts across multiple rooms.
     """
     __tablename__ = "assistant_state"
 
     # Primary key (single assistant for now)
     id = Column(String, primary_key=True, default="default")
 
-    # Position and movement
-    position_x = Column(Integer, nullable=False, default=32)  # Grid X coordinate
-    position_y = Column(Integer, nullable=False, default=8)   # Grid Y coordinate
+    # Multi-room positioning
+    current_floor_plan_id = Column(String, nullable=True)  # Current floor plan
+    current_room_id = Column(String, nullable=True)  # Current room within floor plan
+    position_x = Column(Float, nullable=False, default=650.0)  # Continuous X coordinate (pixels)
+    position_y = Column(Float, nullable=False, default=300.0)  # Continuous Y coordinate (pixels)
     facing_direction = Column(String, default="right")  # "up", "down", "left", "right"
+    facing_angle = Column(Float, default=0.0)  # Precise facing angle in degrees (0-360)
 
     # Movement state
     is_moving = Column(Boolean, default=False)
-    target_x = Column(Integer, nullable=True)  # Target position when moving
-    target_y = Column(Integer, nullable=True)
+    target_x = Column(Float, nullable=True)  # Target position when moving
+    target_y = Column(Float, nullable=True)
+    target_room_id = Column(String, nullable=True)  # Target room for cross-room movement
     movement_path = Column(JSON, nullable=True)  # Current path being followed
-    movement_speed = Column(Float, default=1.0)  # Cells per second
+    movement_speed = Column(Float, default=100.0)  # Pixels per second
 
     # Activity and status
     current_action = Column(String, default="idle")  # "idle", "walking", "sitting", "talking"
@@ -67,11 +73,20 @@ class AssistantState(Base):
         """Convert to dictionary for API responses."""
         return {
             "id": self.id,
-            "position": {"x": self.position_x, "y": self.position_y},
-            "facing": self.facing_direction,
+            "location": {
+                "floor_plan_id": self.current_floor_plan_id,
+                "room_id": self.current_room_id,
+                "position": {"x": self.position_x, "y": self.position_y},
+                "facing": self.facing_direction,
+                "facing_angle": self.facing_angle
+            },
             "movement": {
                 "is_moving": self.is_moving,
-                "target": {"x": self.target_x, "y": self.target_y} if self.target_x is not None else None,
+                "target": {
+                    "x": self.target_x,
+                    "y": self.target_y,
+                    "room_id": self.target_room_id
+                } if self.target_x is not None else None,
                 "path": self.movement_path,
                 "speed": self.movement_speed
             },
@@ -99,20 +114,27 @@ class AssistantState(Base):
             }
         }
 
-    def update_position(self, x: int, y: int, facing: Optional[str] = None):
+    def update_position(self, x: float, y: float, room_id: Optional[str] = None,
+                       facing: Optional[str] = None, facing_angle: Optional[float] = None):
         """Update assistant position and related timestamps."""
         self.position_x = x
         self.position_y = y
+        if room_id:
+            self.current_room_id = room_id
         if facing:
             self.facing_direction = facing
+        if facing_angle is not None:
+            self.facing_angle = facing_angle
         self.last_moved_at = func.now()
         self.updated_at = func.now()
 
-    def start_movement(self, target_x: int, target_y: int, path: list):
+    def start_movement(self, target_x: float, target_y: float, path: list,
+                      target_room_id: Optional[str] = None):
         """Start movement to target position with given path."""
         self.is_moving = True
         self.target_x = target_x
         self.target_y = target_y
+        self.target_room_id = target_room_id
         self.movement_path = path
         self.current_action = "walking"
         self.updated_at = func.now()
@@ -120,13 +142,35 @@ class AssistantState(Base):
     def complete_movement(self):
         """Complete movement and update position to target."""
         if self.target_x is not None and self.target_y is not None:
-            self.update_position(self.target_x, self.target_y)
+            self.update_position(self.target_x, self.target_y, self.target_room_id)
 
         self.is_moving = False
         self.target_x = None
         self.target_y = None
+        self.target_room_id = None
         self.movement_path = None
         self.current_action = "idle"
+
+    def change_room(self, new_room_id: str, new_floor_plan_id: Optional[str] = None):
+        """Move assistant to a different room."""
+        self.current_room_id = new_room_id
+        if new_floor_plan_id:
+            self.current_floor_plan_id = new_floor_plan_id
+        self.updated_at = func.now()
+
+    def get_position(self) -> Tuple[float, float]:
+        """Get current position as tuple."""
+        return (self.position_x, self.position_y)
+
+    def get_distance_to(self, x: float, y: float) -> float:
+        """Calculate distance to a point."""
+        dx = self.position_x - x
+        dy = self.position_y - y
+        return (dx * dx + dy * dy) ** 0.5
+
+    def is_near(self, x: float, y: float, threshold: float = 50.0) -> bool:
+        """Check if assistant is near a specific position."""
+        return self.get_distance_to(x, y) <= threshold
 
     def set_action(self, action: str, object_id: Optional[str] = None):
         """Set current action and related object interaction."""

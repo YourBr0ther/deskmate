@@ -1,0 +1,434 @@
+{
+  "id": "studio_apartment",
+  "name": "Studio Apartment",
+  "description": "Open floor plan studio with kitchen, living, and sleeping areas",
+  "category": "apartment",
+  "dimensions": {
+    "width": 1300,
+    "height": 600,
+    "scale": 20,
+    "units": "feet"
+  },
+  "styling": {
+    "background_color": "#f5f5f5",
+    "background_image": null,
+    "wall_color": "#333333",
+    "wall_thickness": 8
+  },
+  "rooms": [
+    {
+      "id": "studio_main",
+      "name": "Studio",
+      "type": "studio",
+      "bounds": {
+        "x": 50,
+        "y": 50,
+        "width": 1200,
+        "height": 500
+      },
+      "properties": {
+        "floor_color": "#F9FAFB",
+        "floor_material": "hardwood",
+        "lighting_level": 0.8,
+        "temperature": 72.0
+      },
+      "accessibility": {
+        "is_accessible": true,
+        "entry_points": ["door_entrance"]
+      }
+    }
+  ],
+  "walls": [
+    {
+      "id": "wall_north",
+      "name": "North Wall",
+      "geometry": {
+        "start": { "x": 50, "y": 50 },
+        "end": { "x": 1250, "y": 50 }
+      },
+      "properties": {
+        "type": "exterior",
+        "thickness": 8,
+        "material": "drywall",
+        "color": "#333333"
+      },
+      "structural": {
+        "is_load_bearing": true,
+        "can_have_doorways": false
+      }
+    },
+    {
+      "id": "wall_east",
+      "name": "East Wall",
+      "geometry": {
+        "start": { "x": 1250, "y": 50 },
+        "end": { "x": 1250, "y": 550 }
+      },
+      "properties": {
+        "type": "exterior",
+        "thickness": 8,
+        "material": "drywall",
+        "color": "#333333"
+      },
+      "structural": {
+        "is_load_bearing": true,
+        "can_have_doorways": false
+      }
+    },
+    {
+      "id": "wall_south",
+      "name": "South Wall",
+      "geometry": {
+        "start": { "x": 1250, "y": 550 },
+        "end": { "x": 50, "y": 550 }
+      },
+      "properties": {
+        "type": "exterior",
+        "thickness": 8,
+        "material": "drywall",
+        "color": "#333333"
+      },
+      "structural": {
+        "is_load_bearing": true,
+        "can_have_doorways": false
+      }
+    },
+    {
+      "id": "wall_west",
+      "name": "West Wall",
+      "geometry": {
+        "start": { "x": 50, "y": 550 },
+        "end": { "x": 50, "y": 50 }
+      },
+      "properties": {
+        "type": "exterior",
+        "thickness": 8,
+        "material": "drywall",
+        "color": "#333333"
+      },
+      "structural": {
+        "is_load_bearing": true,
+        "can_have_doorways": true
+      }
+    },
+    {
+      "id": "wall_kitchen_partition",
+      "name": "Kitchen Partition",
+      "geometry": {
+        "start": { "x": 200, "y": 100 },
+        "end": { "x": 400, "y": 100 }
+      },
+      "properties": {
+        "type": "interior",
+        "thickness": 4,
+        "material": "drywall",
+        "color": "#666666"
+      },
+      "structural": {
+        "is_load_bearing": false,
+        "can_have_doorways": true
+      }
+    }
+  ],
+  "doorways": [
+    {
+      "id": "door_entrance",
+      "name": "Main Entrance",
+      "wall_id": "wall_west",
+      "position": {
+        "position_on_wall": 0.7,
+        "width": 80
+      },
+      "connections": {
+        "room_a": "studio_main",
+        "room_b": "hallway"
+      },
+      "properties": {
+        "type": "door",
+        "has_door": true,
+        "door_state": "closed"
+      },
+      "accessibility": {
+        "is_accessible": true,
+        "requires_interaction": true
+      }
+    }
+  ],
+  "furniture": [
+    {
+      "id": "kitchen_counter",
+      "name": "Kitchen Counter",
+      "description": "Modern kitchen counter with granite top",
+      "type": "furniture",
+      "room_id": "studio_main",
+      "position": {
+        "x": 80,
+        "y": 120,
+        "rotation": 0
+      },
+      "geometry": {
+        "width": 300,
+        "height": 60,
+        "shape": "rectangle"
+      },
+      "properties": {
+        "solid": true,
+        "interactive": true,
+        "movable": false,
+        "z_index": 1
+      },
+      "visual": {
+        "color": "#8B4513",
+        "material": "wood",
+        "style": "modern",
+        "sprite": "kitchen_counter.svg"
+      },
+      "functional": {
+        "can_sit_on": false,
+        "can_place_items_on": true,
+        "storage_capacity": 5
+      },
+      "states": {
+        "clean": "true",
+        "items_on_top": "coffee_maker,toaster"
+      }
+    },
+    {
+      "id": "refrigerator",
+      "name": "Refrigerator",
+      "description": "Stainless steel energy-efficient refrigerator",
+      "type": "appliance",
+      "room_id": "studio_main",
+      "position": {
+        "x": 80,
+        "y": 200,
+        "rotation": 0
+      },
+      "geometry": {
+        "width": 60,
+        "height": 60,
+        "shape": "rectangle"
+      },
+      "properties": {
+        "solid": true,
+        "interactive": true,
+        "movable": false,
+        "z_index": 1
+      },
+      "visual": {
+        "color": "#E5E7EB",
+        "material": "metal",
+        "style": "modern",
+        "sprite": "refrigerator.svg"
+      },
+      "functional": {
+        "can_sit_on": false,
+        "can_place_items_on": false,
+        "storage_capacity": 20,
+        "requires_power": true
+      },
+      "states": {
+        "power": "on",
+        "temperature": "38",
+        "door_open": "false"
+      }
+    },
+    {
+      "id": "sectional_sofa",
+      "name": "Sectional Sofa",
+      "description": "Comfortable L-shaped sectional sofa",
+      "type": "furniture",
+      "room_id": "studio_main",
+      "position": {
+        "x": 500,
+        "y": 300,
+        "rotation": 0
+      },
+      "geometry": {
+        "width": 180,
+        "height": 80,
+        "shape": "L-shape"
+      },
+      "properties": {
+        "solid": true,
+        "interactive": true,
+        "movable": false,
+        "z_index": 1
+      },
+      "visual": {
+        "color": "#6B7280",
+        "material": "fabric",
+        "style": "modern",
+        "sprite": "sectional_sofa.svg"
+      },
+      "functional": {
+        "can_sit_on": true,
+        "can_place_items_on": true,
+        "storage_capacity": 0
+      },
+      "states": {
+        "occupied": "false",
+        "cushions_arranged": "true"
+      }
+    },
+    {
+      "id": "coffee_table",
+      "name": "Coffee Table",
+      "description": "Glass top coffee table with wooden legs",
+      "type": "furniture",
+      "room_id": "studio_main",
+      "position": {
+        "x": 550,
+        "y": 400,
+        "rotation": 0
+      },
+      "geometry": {
+        "width": 80,
+        "height": 40,
+        "shape": "rectangle"
+      },
+      "properties": {
+        "solid": true,
+        "interactive": true,
+        "movable": true,
+        "z_index": 1
+      },
+      "visual": {
+        "color": "#92400E",
+        "material": "wood",
+        "style": "modern",
+        "sprite": "coffee_table.svg"
+      },
+      "functional": {
+        "can_sit_on": false,
+        "can_place_items_on": true,
+        "storage_capacity": 3
+      },
+      "states": {
+        "items_on_top": "remote_control,magazine"
+      }
+    },
+    {
+      "id": "queen_bed",
+      "name": "Queen Bed",
+      "description": "Comfortable queen size bed with memory foam mattress",
+      "type": "furniture",
+      "room_id": "studio_main",
+      "position": {
+        "x": 900,
+        "y": 350,
+        "rotation": 0
+      },
+      "geometry": {
+        "width": 160,
+        "height": 120,
+        "shape": "rectangle"
+      },
+      "properties": {
+        "solid": true,
+        "interactive": true,
+        "movable": false,
+        "z_index": 1
+      },
+      "visual": {
+        "color": "#F3F4F6",
+        "material": "fabric",
+        "style": "modern",
+        "sprite": "queen_bed.svg"
+      },
+      "functional": {
+        "can_sit_on": true,
+        "can_place_items_on": true,
+        "storage_capacity": 0
+      },
+      "states": {
+        "made": "true",
+        "occupied": "false"
+      }
+    },
+    {
+      "id": "nightstand",
+      "name": "Nightstand",
+      "description": "Wooden nightstand with drawer",
+      "type": "furniture",
+      "room_id": "studio_main",
+      "position": {
+        "x": 1070,
+        "y": 370,
+        "rotation": 0
+      },
+      "geometry": {
+        "width": 40,
+        "height": 40,
+        "shape": "rectangle"
+      },
+      "properties": {
+        "solid": true,
+        "interactive": true,
+        "movable": true,
+        "z_index": 1
+      },
+      "visual": {
+        "color": "#8B4513",
+        "material": "wood",
+        "style": "modern",
+        "sprite": "nightstand.svg"
+      },
+      "functional": {
+        "can_sit_on": false,
+        "can_place_items_on": true,
+        "storage_capacity": 2
+      },
+      "states": {
+        "drawer_open": "false",
+        "lamp_on_top": "true"
+      }
+    },
+    {
+      "id": "desk_lamp",
+      "name": "Desk Lamp",
+      "description": "Adjustable LED desk lamp",
+      "type": "lighting",
+      "room_id": "studio_main",
+      "position": {
+        "x": 1080,
+        "y": 380,
+        "rotation": 0
+      },
+      "geometry": {
+        "width": 20,
+        "height": 20,
+        "shape": "circle"
+      },
+      "properties": {
+        "solid": false,
+        "interactive": true,
+        "movable": true,
+        "z_index": 2
+      },
+      "visual": {
+        "color": "#FFD700",
+        "material": "metal",
+        "style": "modern",
+        "sprite": "desk_lamp.svg"
+      },
+      "functional": {
+        "can_sit_on": false,
+        "can_place_items_on": false,
+        "storage_capacity": 0,
+        "requires_power": true
+      },
+      "states": {
+        "power": "on",
+        "brightness": "75",
+        "color_temperature": "warm"
+      }
+    }
+  ],
+  "metadata": {
+    "created_at": "2025-11-04T00:00:00Z",
+    "created_by": "system",
+    "is_template": true,
+    "version": "1.0"
+  }
+}
