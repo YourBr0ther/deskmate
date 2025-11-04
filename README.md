@@ -110,8 +110,6 @@ npm run dev  # Development server on port 3000
 docker-compose up -d deskmate-postgres deskmate-qdrant
 ```
 
-### Testing the System
-
 #### Phase 7 Brain Council Tests
 ```bash
 # Comprehensive Brain Council test suite
