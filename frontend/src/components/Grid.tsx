@@ -241,9 +241,7 @@ const Grid: React.FC = () => {
       }
     }
 
-    if (cell.objectId === assistant.id) {
-      classes += ' bg-green-500 border-green-400';
-    }
+    // Assistant is now rendered as a white dot overlay, not as a green cell
 
     // Add object-specific background for furniture
     if (cell.objectId && cell.objectId !== assistant.id) {

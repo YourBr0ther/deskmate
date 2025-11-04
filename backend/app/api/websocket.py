@@ -21,6 +21,7 @@ from app.services.assistant_service import assistant_service
 from app.services.brain_council import brain_council
 from app.services.room_service import room_service
 from app.services.conversation_memory import conversation_memory
+from app.services.action_executor import action_executor
 
 logger = logging.getLogger(__name__)
 
@@ -301,73 +302,32 @@ async def handle_chat_message(websocket: WebSocket, data: Dict[str, Any]):
 
 
 async def execute_council_actions(actions: List[Dict[str, Any]], websocket: WebSocket):
-    """Execute actions decided by the Brain Council."""
-    for action in actions:
-        try:
-            action_type = action.get("type")
-            target = action.get("target")
-            parameters = action.get("parameters", {})
+    """Execute actions decided by the Brain Council using the action executor."""
+    if not actions:
+        return
 
-            if action_type == "move":
-                # Move assistant to target coordinates
-                if isinstance(target, str) and "," in target:
-                    # Parse coordinates - handle both "x,y" and "(x, y)" formats
-                    target_clean = target.strip("()").strip()  # Remove parentheses if present
-                    coords = target_clean.split(",")
-                    x, y = int(coords[0].strip()), int(coords[1].strip())
-                elif isinstance(target, dict):
-                    x, y = target.get("x"), target.get("y")
-                else:
-                    continue
+    try:
+        # Create a broadcast callback function for the action executor
+        async def broadcast_callback(message: Dict[str, Any]):
+            await connection_manager.broadcast(message)
 
-                logger.info(f"Executing move action to coordinates ({x}, {y})")
-                result = await assistant_service.move_assistant_to(x, y)
-                if result.get("success"):
-                    logger.info(f"Movement successful - broadcasting assistant state update")
-                    # Broadcast assistant state update
-                    assistant_state = await assistant_service.get_assistant_state()
-                    await connection_manager.broadcast({
-                        "type": "assistant_state",
-                        "data": assistant_state.to_dict(),
-                        "timestamp": datetime.now().isoformat()
-                    })
-                else:
-                    logger.warning(f"Movement failed: {result.get('error', 'Unknown error')}")
+        # Execute actions through the action executor
+        logger.info(f"Executing {len(actions)} Brain Council actions")
+        results = await action_executor.execute_actions(actions, broadcast_callback)
 
-            elif action_type == "interact":
-                # Interact with an object
-                object_id = target
-                interaction_type = parameters.get("interaction", "activate")
+        # Log execution results
+        logger.info(f"Action execution complete: {results['executed']} succeeded, {results['failed']} failed")
 
-                if interaction_type == "activate":
-                    # Toggle object state
-                    objects = await room_service.get_all_objects()
-                    target_obj = next((obj for obj in objects if obj["id"] == object_id), None)
+        # Send execution summary to the specific websocket
+        if results["failed"] > 0:
+            failed_actions = [r for r in results["action_results"] if not r.get("success", False)]
+            for failed in failed_actions:
+                logger.warning(f"Action failed: {failed}")
 
-                    if target_obj:
-                        # Toggle common states
-                        current_states = await room_service.get_object_states(object_id)
-
-                        if "power" in current_states:
-                            new_state = "off" if current_states["power"] == "on" else "on"
-                            await room_service.set_object_state(object_id, "power", new_state, "assistant")
-                        elif "open" in current_states:
-                            new_state = "closed" if current_states["open"] == "open" else "open"
-                            await room_service.set_object_state(object_id, "open", new_state, "assistant")
-
-            elif action_type == "state_change":
-                # Change object or room state
-                object_id = target
-                state_key = parameters.get("state_key")
-                state_value = parameters.get("state_value")
-
-                if object_id and state_key and state_value:
-                    await room_service.set_object_state(object_id, state_key, state_value, "assistant")
-
-        except Exception as e:
-            logger.error(f"Error executing action {action}: {e}")
-            import traceback
-            logger.error(f"Action execution traceback: {traceback.format_exc()}")
+    except Exception as e:
+        logger.error(f"Error in execute_council_actions: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
 
 
 async def update_assistant_mood(new_mood: str):
