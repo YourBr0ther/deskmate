@@ -16,16 +16,31 @@ COPY . .
 RUN npm run build
 
 # Production stage with nginx
-FROM nginx:alpine
+FROM nginx:alpine as production
+
+# Create non-root user
+RUN addgroup -g 1000 -S deskmate && \
+    adduser -u 1000 -D -S -G deskmate deskmate
+
+# Create necessary directories with proper permissions
+RUN mkdir -p /var/cache/nginx /var/run /var/log/nginx && \
+    chown -R deskmate:deskmate /var/cache/nginx /var/run /var/log/nginx /usr/share/nginx/html
 
 # Copy built app to nginx
-COPY --from=build /app/build /usr/share/nginx/html
+COPY --from=build --chown=deskmate:deskmate /app/build /usr/share/nginx/html
 
 # Copy custom nginx config
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --chown=deskmate:deskmate nginx.conf /etc/nginx/conf.d/default.conf
+
+# Switch to non-root user
+USER deskmate
 
 # Expose port 80
 EXPOSE 80
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
 
 # Start nginx
 CMD ["nginx", "-g", "daemon off;"]

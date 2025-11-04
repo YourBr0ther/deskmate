@@ -1,0 +1,201 @@
+version: '3.8'
+
+services:
+  # Nginx Reverse Proxy with SSL
+  nginx:
+    image: nginx:alpine
+    container_name: deskmate-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - /var/log/nginx:/var/log/nginx
+    environment:
+      - NGINX_HOST=${DOMAIN_NAME:-localhost}
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - deskmate-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Frontend Service
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+      target: production
+    container_name: deskmate-frontend
+    restart: unless-stopped
+    user: "1000:1000"
+    networks:
+      - deskmate-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+
+  # Backend Service
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile.prod
+      target: production
+    container_name: deskmate-backend
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file:
+      - .env.prod
+    environment:
+      - DATABASE_URL=postgresql://deskmate:${POSTGRES_PASSWORD}@postgres:5432/deskmate
+      - QDRANT_URL=http://qdrant:6333
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    volumes:
+      - ../../data:/data:ro
+      - /var/log/deskmate:/app/logs
+    networks:
+      - deskmate-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: deskmate-postgres
+    restart: unless-stopped
+    user: "999:999"
+    environment:
+      - POSTGRES_USER=deskmate
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=deskmate
+      - POSTGRES_INITDB_ARGS="--auth-host=scram-sha-256"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - /var/log/postgresql:/var/log/postgresql
+    networks:
+      - deskmate-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U deskmate -d deskmate"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: deskmate-qdrant
+    restart: unless-stopped
+    user: "1000:1000"
+    volumes:
+      - qdrant_data:/qdrant/storage
+      - /var/log/qdrant:/qdrant/logs
+    networks:
+      - deskmate-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:6333/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # Monitoring Service
+  monitoring:
+    build:
+      context: ../monitoring
+      dockerfile: Dockerfile
+    container_name: deskmate-monitoring
+    restart: unless-stopped
+    user: "1000:1000"
+    environment:
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - ALERT_EMAIL=${ALERT_EMAIL}
+      - CHECK_INTERVAL=60
+    depends_on:
+      - backend
+      - postgres
+      - qdrant
+    networks:
+      - deskmate-network
+    volumes:
+      - /var/log/deskmate:/logs:ro
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+
+volumes:
+  postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/deskmate/data/postgres
+  qdrant_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/deskmate/data/qdrant
+
+networks:
+  deskmate-network:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: deskmate0
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

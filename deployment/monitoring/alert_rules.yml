@@ -1,0 +1,182 @@
+# Prometheus alert rules for DeskMate
+
+groups:
+- name: deskmate-system
+  rules:
+  # High CPU usage
+  - alert: HighCPUUsage
+    expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High CPU usage detected on {{ $labels.instance }}"
+      description: "CPU usage is above 85% for more than 2 minutes"
+
+  # High memory usage
+  - alert: HighMemoryUsage
+    expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 90
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: "High memory usage detected on {{ $labels.instance }}"
+      description: "Memory usage is above 90% for more than 2 minutes"
+
+  # Low disk space
+  - alert: LowDiskSpace
+    expr: (node_filesystem_size_bytes{fstype!="tmpfs"} - node_filesystem_free_bytes{fstype!="tmpfs"}) / node_filesystem_size_bytes{fstype!="tmpfs"} * 100 > 90
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Low disk space on {{ $labels.instance }}"
+      description: "Disk usage is above 90% on {{ $labels.mountpoint }}"
+
+  # Very low disk space
+  - alert: VeryLowDiskSpace
+    expr: (node_filesystem_size_bytes{fstype!="tmpfs"} - node_filesystem_free_bytes{fstype!="tmpfs"}) / node_filesystem_size_bytes{fstype!="tmpfs"} * 100 > 95
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Very low disk space on {{ $labels.instance }}"
+      description: "Disk usage is above 95% on {{ $labels.mountpoint }} - immediate action required"
+
+- name: deskmate-services
+  rules:
+  # Service down
+  - alert: ServiceDown
+    expr: up == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Service {{ $labels.job }} is down"
+      description: "Service {{ $labels.job }} on {{ $labels.instance }} has been down for more than 1 minute"
+
+  # High response time
+  - alert: HighResponseTime
+    expr: http_request_duration_seconds{quantile="0.95"} > 5
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High response time for {{ $labels.job }}"
+      description: "95th percentile response time is above 5 seconds for {{ $labels.job }}"
+
+  # Database connection failures
+  - alert: DatabaseConnectionFailure
+    expr: increase(database_connection_errors_total[5m]) > 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Database connection failures detected"
+      description: "Database connection errors have increased in the last 5 minutes"
+
+- name: deskmate-containers
+  rules:
+  # Container restart
+  - alert: ContainerRestarted
+    expr: increase(container_start_time_seconds[10m]) > 0
+    for: 0m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Container {{ $labels.name }} restarted"
+      description: "Container {{ $labels.name }} has restarted in the last 10 minutes"
+
+  # Container high CPU
+  - alert: ContainerHighCPU
+    expr: rate(container_cpu_usage_seconds_total[5m]) * 100 > 80
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Container {{ $labels.name }} high CPU usage"
+      description: "Container {{ $labels.name }} CPU usage is above 80%"
+
+  # Container high memory
+  - alert: ContainerHighMemory
+    expr: container_memory_usage_bytes / container_spec_memory_limit_bytes * 100 > 90
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Container {{ $labels.name }} high memory usage"
+      description: "Container {{ $labels.name }} memory usage is above 90% of limit"
+
+  # Container out of memory
+  - alert: ContainerOOM
+    expr: increase(container_memory_failures_total{type="oom"}[5m]) > 0
+    for: 0m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Container {{ $labels.name }} out of memory"
+      description: "Container {{ $labels.name }} has experienced OOM kills"
+
+- name: deskmate-application
+  rules:
+  # High error rate
+  - alert: HighErrorRate
+    expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) * 100 > 5
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High error rate for {{ $labels.job }}"
+      description: "Error rate is above 5% for {{ $labels.job }}"
+
+  # Very high error rate
+  - alert: VeryHighErrorRate
+    expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) * 100 > 20
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Very high error rate for {{ $labels.job }}"
+      description: "Error rate is above 20% for {{ $labels.job }} - immediate attention required"
+
+  # No requests
+  - alert: NoRequests
+    expr: rate(http_requests_total[5m]) == 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "No requests to {{ $labels.job }}"
+      description: "No HTTP requests received by {{ $labels.job }} in the last 5 minutes"
+
+- name: deskmate-security
+  rules:
+  # Too many failed login attempts
+  - alert: TooManyFailedLogins
+    expr: increase(failed_login_attempts_total[5m]) > 20
+    for: 0m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High number of failed login attempts"
+      description: "More than 20 failed login attempts in the last 5 minutes"
+
+  # SSL certificate expiry
+  - alert: SSLCertificateExpiry
+    expr: ssl_certificate_expiry_days < 30
+    for: 1h
+    labels:
+      severity: warning
+    annotations:
+      summary: "SSL certificate expiring soon"
+      description: "SSL certificate will expire in {{ $value }} days"
+
+  # SSL certificate expiry critical
+  - alert: SSLCertificateExpiryCritical
+    expr: ssl_certificate_expiry_days < 7
+    for: 1h
+    labels:
+      severity: critical
+    annotations:
+      summary: "SSL certificate expiring very soon"
+      description: "SSL certificate will expire in {{ $value }} days - immediate renewal required"
