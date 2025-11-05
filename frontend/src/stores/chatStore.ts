@@ -4,6 +4,7 @@
 
 import { create } from 'zustand';
 import { usePersonaStore } from './personaStore';
+import { MessageCleanupService } from '../services/messageCleanupService';
 
 export interface ChatMessage {
   id: string;
@@ -68,6 +69,9 @@ interface ChatState {
   // Connection management
   setConnected: (connected: boolean) => void;
   setTyping: (typing: boolean) => void;
+
+  // Message cleanup
+  cleanupOldMessages: (retentionDays: number) => void;
 }
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -181,6 +185,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // Connection management
   setConnected: (connected) => set({ isConnected: connected }),
   setTyping: (typing) => set({ isTyping: typing }),
+
+  // Message cleanup
+  cleanupOldMessages: (retentionDays) => {
+    const state = get();
+    const originalMessages = state.messages;
+
+    const cleanedMessages = MessageCleanupService.cleanupMessages(originalMessages, {
+      retentionDays,
+      preserveSystemMessages: true,
+      preserveImportantMessages: true
+    });
+
+    // Only update if messages were actually removed
+    if (cleanedMessages.length !== originalMessages.length) {
+      const stats = MessageCleanupService.getCleanupStats(originalMessages, cleanedMessages);
+      MessageCleanupService.logCleanupActivity(stats, retentionDays);
+
+      set({ messages: cleanedMessages });
+    }
+  },
 
   // WebSocket actions
   connect: () => {

@@ -4,8 +4,10 @@
 
 import React from 'react';
 import { useChatStore, ChatMessage } from '../../stores/chatStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 
 const MessageBubble: React.FC<{ message: ChatMessage }> = ({ message }) => {
+  const { chat } = useSettingsStore();
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
 
@@ -26,29 +28,35 @@ const MessageBubble: React.FC<{ message: ChatMessage }> = ({ message }) => {
           ? 'bg-blue-600 text-white'
           : 'bg-gray-700 text-white'
       }`}>
-        <div className="whitespace-pre-wrap break-words">
+        <div className={`whitespace-pre-wrap break-words ${
+          chat.fontSize === 'small' ? 'text-sm' :
+          chat.fontSize === 'large' ? 'text-lg' : 'text-base'
+        }`}>
           {message.content || (message.isStreaming ? '...' : '')}
         </div>
 
         {/* Message metadata */}
-        <div className={`text-xs mt-1 opacity-70 ${
-          isUser ? 'text-blue-100' : 'text-gray-400'
-        }`}>
-          {new Date(message.timestamp).toLocaleTimeString()}
-          {message.model && !isUser && (
-            <span className="ml-2">• {message.model}</span>
-          )}
-          {message.isStreaming && (
-            <span className="ml-2 animate-pulse">• streaming</span>
-          )}
-        </div>
+        {(chat.showTimestamps || message.model || message.isStreaming) && (
+          <div className={`text-xs mt-1 opacity-70 ${
+            isUser ? 'text-blue-100' : 'text-gray-400'
+          }`}>
+            {chat.showTimestamps && new Date(message.timestamp).toLocaleTimeString()}
+            {message.model && !isUser && (
+              <span className="ml-2">• {message.model}</span>
+            )}
+            {message.isStreaming && (
+              <span className="ml-2 animate-pulse">• streaming</span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
 const MessageList: React.FC = () => {
-  const { messages } = useChatStore();
+  const { messages, isTyping } = useChatStore();
+  const { chat } = useSettingsStore();
 
   if (messages.length === 0) {
     return (
@@ -79,6 +87,22 @@ const MessageList: React.FC = () => {
       {messages.map((message) => (
         <MessageBubble key={message.id} message={message} />
       ))}
+
+      {/* Typing indicator */}
+      {isTyping && chat.enableTypingIndicator && (
+        <div className="px-4 py-2 text-left">
+          <div className="inline-block max-w-[80%] rounded-lg px-4 py-2 bg-gray-700 text-white">
+            <div className="flex items-center space-x-2">
+              <span className="text-sm">Assistant is typing</span>
+              <div className="flex space-x-1">
+                <div className="w-1 h-1 bg-gray-400 rounded-full animate-bounce"></div>
+                <div className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                <div className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

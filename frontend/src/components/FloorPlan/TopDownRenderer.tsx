@@ -8,6 +8,7 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useRoomNavigation, NavigationPath } from '../../hooks/useRoomNavigation';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { FloorPlan, Room, Wall, Doorway, FurnitureItem, Assistant, Position } from '../../types/floorPlan';
 
 // Local component types
@@ -54,6 +55,7 @@ export const TopDownRenderer: React.FC<TopDownRendererProps> = ({
   className = '',
   style = {}
 }) => {
+  const { display } = useSettingsStore();
   const svgRef = useRef<SVGSVGElement>(null);
   const [viewBox, setViewBox] = useState({
     x: 0,
@@ -386,7 +388,16 @@ export const TopDownRenderer: React.FC<TopDownRendererProps> = ({
       // Use drag position if currently dragging this item
       const position = isDragged && dragCurrentPosition ? dragCurrentPosition : item.position;
       const { x, y } = position;
-      const { width, height } = item.geometry;
+      let { width, height } = item.geometry;
+
+      // Adjust size based on display mode
+      if (display.gridDisplayMode === 'compact') {
+        width = Math.max(width * 0.8, 20);
+        height = Math.max(height * 0.8, 20);
+      } else if (display.gridDisplayMode === 'detailed') {
+        width = Math.min(width * 1.2, 80);
+        height = Math.min(height * 1.2, 80);
+      }
 
       return (
         <g
@@ -432,23 +443,44 @@ export const TopDownRenderer: React.FC<TopDownRendererProps> = ({
             ry="2"
             className="furniture-shape"
             style={{
-              filter: isHovered ? 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))' : undefined
+              filter: isHovered
+                ? display.highQualityRendering
+                  ? 'drop-shadow(0 4px 8px rgba(0,0,0,0.15)) drop-shadow(0 2px 4px rgba(0,0,0,0.1))'
+                  : 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))'
+                : display.highQualityRendering
+                  ? 'drop-shadow(0 1px 2px rgba(0,0,0,0.05))'
+                  : undefined
             }}
           />
 
-          {/* Furniture icon/label */}
+          {/* Furniture icon/label - varies by display mode */}
           <text
             x={x + width / 2}
             y={y + height / 2}
             textAnchor="middle"
             dominantBaseline="middle"
             className="furniture-label text-xs fill-white"
-            fontSize="10"
+            fontSize={display.gridDisplayMode === 'detailed' ? '12' : display.gridDisplayMode === 'compact' ? '8' : '10'}
             fontFamily="system-ui, -apple-system, sans-serif"
             fontWeight="500"
           >
-            {getFurnitureIcon(item.type, item.name)}
+            {display.gridDisplayMode === 'compact' ? getFurnitureIcon(item.type, item.name).split(' ')[0] : getFurnitureIcon(item.type, item.name)}
           </text>
+
+          {/* Detailed mode: Show additional info */}
+          {display.gridDisplayMode === 'detailed' && (
+            <text
+              x={x + width / 2}
+              y={y + height / 2 + 15}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              className="furniture-detail text-xs fill-gray-300"
+              fontSize="8"
+              fontFamily="system-ui, -apple-system, sans-serif"
+            >
+              {item.name}
+            </text>
+          )}
 
           {/* Selection indicator */}
           {isSelected && (
@@ -488,7 +520,9 @@ export const TopDownRenderer: React.FC<TopDownRendererProps> = ({
           strokeWidth="2"
           className="assistant-body"
           style={{
-            filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.2))'
+            filter: display.highQualityRendering
+              ? 'drop-shadow(0 4px 12px rgba(0,0,0,0.25)) drop-shadow(0 2px 6px rgba(0,0,0,0.15))'
+              : 'drop-shadow(0 2px 6px rgba(0,0,0,0.2))'
           }}
         />
 
@@ -718,18 +752,35 @@ export const TopDownRenderer: React.FC<TopDownRendererProps> = ({
         style={{
           cursor: isDragging ? 'grabbing' : 'default'
         }}
+        // High quality rendering settings
+        shapeRendering={display.highQualityRendering ? "geometricPrecision" : "auto"}
+        textRendering={display.highQualityRendering ? "optimizeLegibility" : "auto"}
       >
         {/* Pattern definitions */}
         <defs>
+          {/* High quality gradients for enhanced visuals */}
+          {display.highQualityRendering && (
+            <>
+              <radialGradient id="assistant-glow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="rgba(59, 130, 246, 0.3)" />
+                <stop offset="100%" stopColor="rgba(59, 130, 246, 0)" />
+              </radialGradient>
+              <linearGradient id="furniture-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="rgba(255, 255, 255, 0.1)" />
+                <stop offset="100%" stopColor="rgba(0, 0, 0, 0.1)" />
+              </linearGradient>
+            </>
+          )}
+
           <pattern
             id="carpet-pattern"
             patternUnits="userSpaceOnUse"
-            width="10"
-            height="10"
+            width={display.highQualityRendering ? "8" : "10"}
+            height={display.highQualityRendering ? "8" : "10"}
           >
-            <rect width="10" height="10" fill="#E5E7EB" />
-            <circle cx="2" cy="2" r="0.5" fill="#9CA3AF" />
-            <circle cx="8" cy="8" r="0.5" fill="#9CA3AF" />
+            <rect width={display.highQualityRendering ? "8" : "10"} height={display.highQualityRendering ? "8" : "10"} fill="#E5E7EB" />
+            <circle cx="2" cy="2" r={display.highQualityRendering ? "0.3" : "0.5"} fill="#9CA3AF" />
+            <circle cx={display.highQualityRendering ? "6" : "8"} cy={display.highQualityRendering ? "6" : "8"} r={display.highQualityRendering ? "0.3" : "0.5"} fill="#9CA3AF" />
           </pattern>
 
           <pattern
@@ -738,7 +789,7 @@ export const TopDownRenderer: React.FC<TopDownRendererProps> = ({
             width="20"
             height="20"
           >
-            <rect width="20" height="20" fill="#F3F4F6" stroke="#E5E7EB" strokeWidth="1" />
+            <rect width="20" height="20" fill="#F3F4F6" stroke="#E5E7EB" strokeWidth={display.highQualityRendering ? "0.5" : "1"} />
           </pattern>
         </defs>
 

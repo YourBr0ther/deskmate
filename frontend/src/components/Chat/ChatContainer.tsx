@@ -9,6 +9,8 @@ import React, { useRef, useEffect } from 'react';
 import { useDeviceDetection } from '../../hooks/useDeviceDetection';
 import { useChatStore } from '../../stores/chatStore';
 import { usePersonaStore } from '../../stores/personaStore';
+import { useSettingsStore } from '../../stores/settingsStore';
+import { useMessageCleanup } from '../../hooks/useMessageCleanup';
 import ModelSelector from './ModelSelector';
 
 interface ChatContainerProps {
@@ -46,12 +48,18 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   // Persona store state
   const { selectedPersona } = usePersonaStore();
 
-  // Auto-scroll to bottom when new messages arrive
+  // Settings store state
+  const { chat } = useSettingsStore();
+
+  // Message cleanup functionality
+  useMessageCleanup();
+
+  // Auto-scroll to bottom when new messages arrive (if enabled)
   useEffect(() => {
-    if (messagesRef.current) {
+    if (chat.autoScroll && messagesRef.current) {
       messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, chat.autoScroll]);
 
   // Auto-connect on mount
   useEffect(() => {
@@ -198,7 +206,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         ))}
 
         {/* Typing indicator */}
-        {isTyping && (
+        {isTyping && chat.enableTypingIndicator && (
           <div className="flex justify-start">
             <div className="bg-gray-100 px-4 py-2 rounded-lg rounded-bl-sm">
               <div className="flex space-x-1 items-center">

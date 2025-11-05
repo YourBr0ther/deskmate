@@ -13,6 +13,8 @@ import { usePersonaStore } from './stores/personaStore';
 import ResponsiveLayout from './components/Layout/ResponsiveLayout';
 import SettingsPanel from './components/Settings/SettingsPanel';
 import PerformanceMonitor from './components/PerformanceMonitor';
+import { ThemeProvider } from './contexts/ThemeContext';
+import './styles/themes.css';
 
 const App: React.FC = () => {
   const { loadPersonas } = usePersonaStore();
@@ -23,14 +25,16 @@ const App: React.FC = () => {
   }, [loadPersonas]);
 
   return (
-    <div className="app-container w-full h-screen overflow-hidden">
-      {/* Main responsive layout system */}
-      <ResponsiveLayout />
+    <ThemeProvider>
+      <div className="app-container w-full h-screen overflow-hidden bg-themed-primary text-themed-primary">
+        {/* Main responsive layout system */}
+        <ResponsiveLayout />
 
-      {/* Global overlays that work across all layouts */}
-      <SettingsPanel />
-      <PerformanceMonitor />
-    </div>
+        {/* Global overlays that work across all layouts */}
+        <SettingsPanel />
+        <PerformanceMonitor />
+      </div>
+    </ThemeProvider>
   );
 };
 

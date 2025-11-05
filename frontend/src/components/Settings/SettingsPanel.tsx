@@ -2,7 +2,7 @@
  * Settings Panel Component - Comprehensive settings management UI
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useSettingsStore } from '../../stores/settingsStore';
 
 const SettingsPanel: React.FC = () => {
@@ -45,6 +45,11 @@ const SettingsPanel: React.FC = () => {
     resetAllSettings,
   } = useSettingsStore();
 
+  // Apply panel transparency to root CSS variable
+  useEffect(() => {
+    document.documentElement.style.setProperty('--panel-opacity', (display.panelTransparency / 100).toString());
+  }, [display.panelTransparency]);
+
   if (!isSettingsOpen) return null;
 
   const tabButtons = [
@@ -57,7 +62,7 @@ const SettingsPanel: React.FC = () => {
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-      <div className="w-full max-w-4xl h-full max-h-[90vh] bg-gray-800 rounded-lg shadow-2xl border border-gray-700 flex flex-col">
+      <div className="w-full max-w-4xl h-full max-h-[90vh] panel-transparent rounded-lg shadow-2xl border border-themed-primary flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-700">
           <h2 className="text-2xl font-bold text-white">Settings</h2>
