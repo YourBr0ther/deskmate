@@ -17,7 +17,7 @@ from datetime import datetime
 
 from app.models.assistant import AssistantState, AssistantActionLog
 from app.models.room_objects import GridObject
-from app.services.pathfinding import pathfinding_service
+from app.services.multi_room_pathfinding import multi_room_pathfinding_service
 from app.db.database import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
@@ -128,8 +128,20 @@ class AssistantService:
             obstacles = await self._get_room_obstacles()
 
             if validate_path:
-                # Find path using A* algorithm
-                path = pathfinding_service.find_path(start_pos, target_pos, obstacles)
+                # Find path using multi-room pathfinding
+                from app.database import get_db
+
+                async for db in get_db():
+                    path_result = multi_room_pathfinding_service.find_multi_room_path(
+                        db=db,
+                        floor_plan_id=assistant.current_floor_plan_id or "studio_apartment",
+                        start_pos=(float(assistant.position_x), float(assistant.position_y)),
+                        start_room_id=assistant.current_room_id or "main_room",
+                        goal_pos=(float(target_x), float(target_y)),
+                        goal_room_id=assistant.current_room_id or "main_room"
+                    )
+                    path = path_result.get("path", [])
+                    break
 
                 if not path:
                     await self._log_action(
@@ -151,8 +163,11 @@ class AssistantService:
 
             # Calculate facing direction based on movement
             if len(path) > 1:
-                dx = path[1][0] - path[0][0]
-                dy = path[1][1] - path[0][1]
+                # Handle PathPoint objects or tuples
+                p1 = path[1]
+                p0 = path[0]
+                dx = (p1.x if hasattr(p1, 'x') else p1[0]) - (p0.x if hasattr(p0, 'x') else p0[0])
+                dy = (p1.y if hasattr(p1, 'y') else p1[1]) - (p0.y if hasattr(p0, 'y') else p0[1])
                 facing = self._calculate_facing(dx, dy)
             else:
                 facing = assistant.facing_direction

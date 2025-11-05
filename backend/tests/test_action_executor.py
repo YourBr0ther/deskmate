@@ -7,10 +7,10 @@ import pytest
 from unittest.mock import AsyncMock, Mock, patch
 import json
 
-from app.services.action_executor import ActionExecutor, ActionResult
+from app.services.action_executor import ActionExecutor
 from app.services.assistant_service import assistant_service
 from app.services.room_service import room_service
-from app.services.pathfinding import pathfinding_service
+from app.services.multi_room_pathfinding import multi_room_pathfinding_service
 
 
 @pytest.fixture

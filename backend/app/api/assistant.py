@@ -279,7 +279,8 @@ async def find_path_to_position(path_data: Dict[str, Any] = Body(...)):
         }
     """
     try:
-        from app.services.pathfinding import pathfinding_service
+        from app.services.multi_room_pathfinding import multi_room_pathfinding_service
+        from app.database import get_db
 
         target = path_data.get("target")
         if not target or "x" not in target or "y" not in target:
@@ -297,13 +298,23 @@ async def find_path_to_position(path_data: Dict[str, Any] = Body(...)):
         # Get obstacles
         obstacles = await assistant_service._get_room_obstacles()
 
-        # Find path
-        path = pathfinding_service.find_path(start_pos, target_pos, obstacles)
+        # Find path using multi-room pathfinding
+        async for db_session in get_db():
+            path_result = multi_room_pathfinding_service.find_multi_room_path(
+                db=db_session,
+                floor_plan_id=assistant.current_floor_plan_id or "studio_apartment",
+                start_pos=(float(assistant.position_x), float(assistant.position_y)),
+                start_room_id=assistant.current_room_id or "main_room",
+                goal_pos=(float(target_x), float(target_y)),
+                goal_room_id=assistant.current_room_id or "main_room"
+            )
+            path = path_result.get("path", [])
+            break
 
         return {
             "start": {"x": start_pos[0], "y": start_pos[1]},
             "target": {"x": target_pos[0], "y": target_pos[1]},
-            "path": [{"x": x, "y": y} for x, y in path],
+            "path": [{"x": p.x if hasattr(p, 'x') else p[0], "y": p.y if hasattr(p, 'y') else p[1]} for p in path],
             "path_found": len(path) > 0,
             "path_length": len(path)
         }

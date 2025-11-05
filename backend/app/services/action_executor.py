@@ -13,7 +13,7 @@ from datetime import datetime
 
 from app.services.assistant_service import assistant_service
 from app.services.room_service import room_service
-from app.services.pathfinding import pathfinding_service
+from app.services.multi_room_pathfinding import multi_room_pathfinding_service
 
 logger = logging.getLogger(__name__)
 
@@ -146,12 +146,23 @@ class ActionExecutor:
                         for dy in range(height):
                             obstacles.add((obj_x + dx, obj_y + dy))
 
-            # Calculate path
-            path = pathfinding_service.find_path(
-                start=(start_x, start_y),
-                goal=(x, y),
-                obstacles=obstacles
-            )
+            # Calculate path using multi-room pathfinding (single room mode)
+            # For now, use the studio apartment default room
+            from sqlalchemy.ext.asyncio import AsyncSession
+            from app.database import get_db
+
+            # Get DB session
+            async for db in get_db():
+                path_result = multi_room_pathfinding_service.find_multi_room_path(
+                    db=db,
+                    floor_plan_id="studio_apartment",
+                    start_pos=(float(start_x), float(start_y)),
+                    start_room_id="main_room",
+                    goal_pos=(float(x), float(y)),
+                    goal_room_id="main_room"
+                )
+                path = path_result.get("path", [])
+                break
 
             if not path:
                 return {
@@ -160,12 +171,17 @@ class ActionExecutor:
                     "error": f"No path found to ({x}, {y})"
                 }
 
-            # Execute movement along path
-            for i, (px, py) in enumerate(path[1:], 1):  # Skip starting position
+            # Execute movement along path (extract coordinates from PathPoint objects)
+            for i, point in enumerate(path[1:], 1):  # Skip starting position
+                px, py = point.x if hasattr(point, 'x') else point[0], point.y if hasattr(point, 'y') else point[1]
                 # Update position
                 await assistant_service.update_assistant_position(
                     px, py,
-                    facing=self._calculate_facing(path[i-1], (px, py)),
+                    facing=self._calculate_facing(
+                        (path[i-1].x if hasattr(path[i-1], 'x') else path[i-1][0],
+                         path[i-1].y if hasattr(path[i-1], 'y') else path[i-1][1]),
+                        (px, py)
+                    ),
                     action="walking"
                 )
 
