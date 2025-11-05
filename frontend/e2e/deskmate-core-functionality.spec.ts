@@ -35,10 +35,9 @@ test.describe('DeskMate Core Functionality', () => {
     await expect(page.locator('.grid-area, [data-testid="grid-container"]')).toBeVisible();
     await expect(page.locator('text=DeskMate', { hasText: /DeskMate|Chat/ })).toBeVisible();
 
-    // Check grid dimensions (should be 64x16)
-    const gridCells = page.locator('.grid-cell');
-    const cellCount = await gridCells.count();
-    expect(cellCount).toBe(64 * 16);
+    // Grid area should be visible (no longer using 64x16 grid cells)
+    const gridArea = page.locator('.grid-area, [data-testid="grid-container"]');
+    await expect(gridArea).toBeVisible();
 
     // Check WebSocket connection indicator
     await expect(page.locator('.bg-green-500')).toBeVisible();
