@@ -36,6 +36,7 @@ export const FloorPlanContainer: React.FC<FloorPlanContainerProps> = ({
     error,
     selectObject,
     updateAssistantPosition,
+    updateFurniturePosition,
     setCurrentFloorPlan
   } = useFloorPlanStore();
 
@@ -152,7 +153,7 @@ export const FloorPlanContainer: React.FC<FloorPlanContainerProps> = ({
             position: { x: 550, y: 400, rotation: 0 },
             geometry: { width: 80, height: 40 },
             visual: { color: '#92400E', material: 'wood', style: 'modern' },
-            properties: { solid: true, interactive: true, movable: false }
+            properties: { solid: true, interactive: true, movable: true }
           },
           {
             id: 'bed',
@@ -170,7 +171,7 @@ export const FloorPlanContainer: React.FC<FloorPlanContainerProps> = ({
             position: { x: 1070, y: 370, rotation: 0 },
             geometry: { width: 40, height: 40 },
             visual: { color: '#8B4513', material: 'wood', style: 'modern' },
-            properties: { solid: true, interactive: true, movable: false }
+            properties: { solid: true, interactive: true, movable: true }
           }
         ]
       };
@@ -227,6 +228,38 @@ export const FloorPlanContainer: React.FC<FloorPlanContainerProps> = ({
     updateAssistantPosition(position);
   }, [updateAssistantPosition]);
 
+  // Handle object movement (drag and drop)
+  const handleObjectMove = useCallback((objectId: string, position: Position) => {
+    updateFurniturePosition(objectId, position);
+    console.log(`Furniture ${objectId} moved to (${position.x}, ${position.y})`);
+  }, [updateFurniturePosition]);
+
+  // Handle object interactions (right-click actions)
+  const handleObjectInteract = useCallback(async (objectId: string, action: string) => {
+    console.log(`Object interaction: ${objectId} - ${action}`);
+
+    // Send interaction command to backend
+    try {
+      const response = await fetch(`/api/objects/${objectId}/interact`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`Interaction result:`, result);
+
+        // If it's a sit action, update assistant position
+        if (action === 'sit' && result.assistant_position) {
+          updateAssistantPosition(result.assistant_position);
+        }
+      }
+    } catch (error) {
+      console.error(`Failed to interact with object:`, error);
+    }
+  }, [updateAssistantPosition]);
+
   if (isLoading) {
     return (
       <div className="floor-plan-loading flex items-center justify-center w-full h-full bg-gray-100">
@@ -275,6 +308,8 @@ export const FloorPlanContainer: React.FC<FloorPlanContainerProps> = ({
         assistant={assistant}
         selectedObject={selectedObjectId || undefined}
         onObjectClick={handleObjectClick}
+        onObjectMove={handleObjectMove}
+        onObjectInteract={handleObjectInteract}
         onPositionClick={handlePositionClick}
         onAssistantMove={handleAssistantMove}
         className="w-full h-full"

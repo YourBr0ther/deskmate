@@ -21,6 +21,8 @@ interface TopDownRendererProps {
   assistant: Assistant;
   selectedObject?: string;
   onObjectClick?: (objectId: string) => void;
+  onObjectMove?: (objectId: string, position: Position) => void;
+  onObjectInteract?: (objectId: string, action: string) => void;
   onPositionClick?: (position: Position) => void;
   onAssistantMove?: (position: Position) => void;
   onDoorwayClick?: (doorwayId: string) => void;
@@ -40,6 +42,8 @@ export const TopDownRenderer: React.FC<TopDownRendererProps> = ({
   assistant,
   selectedObject,
   onObjectClick,
+  onObjectMove,
+  onObjectInteract,
   onPositionClick,
   onAssistantMove,
   onDoorwayClick,
@@ -60,6 +64,13 @@ export const TopDownRenderer: React.FC<TopDownRendererProps> = ({
   const [scale, setScale] = useState(1);
   const [hoveredObject, setHoveredObject] = useState<string | null>(null);
   const [hoveredRoom, setHoveredRoom] = useState<string | null>(null);
+
+  // Drag and drop state
+  const [isDragging, setIsDragging] = useState(false);
+  const [draggedObject, setDraggedObject] = useState<string | null>(null);
+  const [dragStartPosition, setDragStartPosition] = useState<Position | null>(null);
+  const [dragCurrentPosition, setDragCurrentPosition] = useState<Position | null>(null);
+  const [dragValid, setDragValid] = useState(true);
 
   // Navigation hook
   const {
@@ -268,24 +279,145 @@ export const TopDownRenderer: React.FC<TopDownRendererProps> = ({
     });
   };
 
+  // Check if position is valid for furniture placement
+  const isValidFurniturePosition = useCallback((furnitureId: string, position: Position, width: number, height: number) => {
+    // Check bounds
+    if (position.x < 0 || position.y < 0 ||
+        position.x + width > floorPlan.dimensions.width ||
+        position.y + height > floorPlan.dimensions.height) {
+      return false;
+    }
+
+    // Check collision with other furniture
+    for (const item of floorPlan.furniture) {
+      if (item.id === furnitureId) continue; // Skip self
+      if (!item.properties.solid) continue; // Skip non-solid items
+
+      const itemRight = item.position.x + item.geometry.width;
+      const itemBottom = item.position.y + item.geometry.height;
+      const newRight = position.x + width;
+      const newBottom = position.y + height;
+
+      // Check for overlap
+      if (!(position.x >= itemRight || newRight <= item.position.x ||
+            position.y >= itemBottom || newBottom <= item.position.y)) {
+        return false;
+      }
+    }
+
+    return true;
+  }, [floorPlan]);
+
+  // Handle drag start
+  const handleDragStart = useCallback((e: React.MouseEvent, item: FurnitureItem) => {
+    if (!item.properties.movable) return;
+
+    e.stopPropagation();
+    setDraggedObject(item.id);
+    setIsDragging(true);
+    setDragStartPosition(item.position);
+    setDragCurrentPosition(item.position);
+    console.log(`Started dragging ${item.name}`);
+  }, []);
+
+  // Handle drag move
+  const handleDragMove = useCallback((e: React.MouseEvent) => {
+    if (!isDragging || !draggedObject) return;
+
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const scaleX = floorPlan.dimensions.width / rect.width;
+    const scaleY = floorPlan.dimensions.height / rect.height;
+
+    const newPosition: Position = {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY
+    };
+
+    // Snap to grid (optional)
+    const gridSize = 10;
+    newPosition.x = Math.round(newPosition.x / gridSize) * gridSize;
+    newPosition.y = Math.round(newPosition.y / gridSize) * gridSize;
+
+    const draggedItem = floorPlan.furniture.find(f => f.id === draggedObject);
+    if (draggedItem) {
+      const valid = isValidFurniturePosition(
+        draggedObject,
+        newPosition,
+        draggedItem.geometry.width,
+        draggedItem.geometry.height
+      );
+      setDragValid(valid);
+      setDragCurrentPosition(newPosition);
+    }
+  }, [isDragging, draggedObject, floorPlan, isValidFurniturePosition]);
+
+  // Handle drag end
+  const handleDragEnd = useCallback((e: React.MouseEvent) => {
+    if (!isDragging || !draggedObject || !dragCurrentPosition) return;
+
+    e.stopPropagation();
+
+    const draggedItem = floorPlan.furniture.find(f => f.id === draggedObject);
+    if (draggedItem && dragValid && onObjectMove) {
+      // Update furniture position in store
+      onObjectMove(draggedObject, dragCurrentPosition);
+      console.log(`Moved ${draggedItem.name} to (${dragCurrentPosition.x}, ${dragCurrentPosition.y})`);
+    } else {
+      console.log('Invalid position - reverting');
+    }
+
+    // Reset drag state
+    setIsDragging(false);
+    setDraggedObject(null);
+    setDragStartPosition(null);
+    setDragCurrentPosition(null);
+    setDragValid(true);
+  }, [isDragging, draggedObject, dragCurrentPosition, dragValid, floorPlan, onObjectMove]);
+
   // Render furniture
   const renderFurniture = () => {
     return floorPlan.furniture.map((item) => {
       const isSelected = selectedObject === item.id;
       const isHovered = hoveredObject === item.id;
-      const { x, y } = item.position;
+      const isDragged = draggedObject === item.id;
+
+      // Use drag position if currently dragging this item
+      const position = isDragged && dragCurrentPosition ? dragCurrentPosition : item.position;
+      const { x, y } = position;
       const { width, height } = item.geometry;
 
       return (
         <g
           key={`furniture-${item.id}`}
-          className="furniture-group cursor-pointer"
+          className={`furniture-group ${item.properties.movable ? 'cursor-move' : 'cursor-pointer'} ${isDragged ? 'dragging' : ''}`}
           onClick={(e) => {
             e.stopPropagation();
-            onObjectClick?.(item.id);
+            if (!isDragging) {
+              onObjectClick?.(item.id);
+            }
           }}
-          onMouseEnter={() => setHoveredObject(item.id)}
-          onMouseLeave={() => setHoveredObject(null)}
+          onMouseDown={(e) => handleDragStart(e, item)}
+          onMouseEnter={() => !isDragging && setHoveredObject(item.id)}
+          onMouseLeave={() => !isDragging && setHoveredObject(null)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            if (item.properties.interactive && onObjectInteract) {
+              // Handle right-click for object interaction
+              if (item.type === 'furniture' && (item.id === 'bed' || item.id === 'sofa')) {
+                onObjectInteract(item.id, 'sit');
+              } else if (item.id === 'refrigerator') {
+                onObjectInteract(item.id, 'open');
+              } else if (item.name.toLowerCase().includes('lamp')) {
+                onObjectInteract(item.id, 'toggle_power');
+              }
+            }
+          }}
+          style={{
+            opacity: isDragged ? 0.7 : 1,
+            cursor: item.properties.movable ? 'move' : 'pointer'
+          }}
         >
           {/* Furniture shape */}
           <rect
@@ -293,9 +425,9 @@ export const TopDownRenderer: React.FC<TopDownRendererProps> = ({
             y={y}
             width={width}
             height={height}
-            fill={item.visual.color}
-            stroke={isSelected ? '#3B82F6' : isHovered ? '#6B7280' : '#9CA3AF'}
-            strokeWidth={isSelected ? 3 : isHovered ? 2 : 1}
+            fill={isDragged && !dragValid ? '#EF4444' : item.visual.color}
+            stroke={isDragged ? (dragValid ? '#10B981' : '#EF4444') : isSelected ? '#3B82F6' : isHovered ? '#6B7280' : '#9CA3AF'}
+            strokeWidth={isDragged ? 3 : isSelected ? 3 : isHovered ? 2 : 1}
             rx="2"
             ry="2"
             className="furniture-shape"
@@ -580,6 +712,12 @@ export const TopDownRenderer: React.FC<TopDownRendererProps> = ({
         viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
         preserveAspectRatio="xMidYMid meet"
         onClick={handleSVGClick}
+        onMouseMove={handleDragMove}
+        onMouseUp={handleDragEnd}
+        onMouseLeave={handleDragEnd}
+        style={{
+          cursor: isDragging ? 'grabbing' : 'default'
+        }}
       >
         {/* Pattern definitions */}
         <defs>

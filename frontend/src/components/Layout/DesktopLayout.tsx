@@ -13,6 +13,7 @@ import { useFloorPlanStore } from '../../stores/floorPlanStore';
 const FloorPlanContainer = React.lazy(() => import('../FloorPlan/FloorPlanContainer'));
 const ChatContainer = React.lazy(() => import('../Chat/ChatContainer'));
 const AssistantSelector = React.lazy(() => import('../AssistantSelection/AssistantSelector'));
+const StorageCloset = React.lazy(() => import('../StorageCloset'));
 
 interface DesktopLayoutProps {
   children?: React.ReactNode;
@@ -255,6 +256,13 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({ children }) => {
 
       {/* Render children if provided */}
       {children}
+
+      {/* Storage Closet Integration */}
+      <React.Suspense
+        fallback={null}
+      >
+        <StorageCloset />
+      </React.Suspense>
 
       {/* Click outside to close floor plan options */}
       {showFloorPlanOptions && (

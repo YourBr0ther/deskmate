@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { usePersonaStore } from '../../stores/personaStore';
+import { useRoomStore } from '../../stores/roomStore';
 
 interface Assistant {
   id: string;
@@ -35,7 +36,42 @@ export const AssistantSelector: React.FC<AssistantSelectorProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { personas, selectedPersona, setSelectedPersona } = usePersonaStore();
+  const { personas, selectedPersona, setSelectedPersona, currentExpression, availableExpressions, setPersonaExpression } = usePersonaStore();
+  const { assistant } = useRoomStore();
+
+  // Handle expression changes
+  const handleExpressionChange = useCallback(async (expression: string) => {
+    if (selectedPersona && setPersonaExpression) {
+      try {
+        await setPersonaExpression(selectedPersona.persona.data.name, expression);
+        console.log(`Changed expression to: ${expression}`);
+      } catch (error) {
+        console.error('Failed to change expression:', error);
+        setError('Failed to change expression');
+      }
+    }
+  }, [selectedPersona, setPersonaExpression]);
+
+  // Status indicator helpers
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active': return 'bg-green-400';
+      case 'idle': return 'bg-yellow-400';
+      case 'busy': return 'bg-red-400';
+      default: return 'bg-gray-400';
+    }
+  };
+
+  const getMoodEmoji = (mood: string) => {
+    switch (mood) {
+      case 'happy': return '😊';
+      case 'sad': return '😢';
+      case 'excited': return '🤩';
+      case 'tired': return '😴';
+      case 'neutral': return '😐';
+      default: return '🙂';
+    }
+  };
 
   // Avatar component with fallback
   const AssistantAvatar: React.FC<{ assistant: Assistant; size?: 'sm' | 'md' | 'lg' }> = ({
@@ -357,6 +393,63 @@ export const AssistantSelector: React.FC<AssistantSelectorProps> = ({
           className="fixed inset-0 z-40"
           onClick={() => setIsOpen(false)}
         />
+      )}
+
+      {/* Enhanced Status Panel */}
+      {!compact && selectedPersona && assistant && (
+        <div className="mt-4 p-3 bg-gray-50 rounded-lg border">
+          <h3 className="text-sm font-semibold mb-2 text-gray-700">Assistant Status</h3>
+
+          {/* Status indicators */}
+          <div className="space-y-2 mb-3">
+            <div className="flex items-center text-sm">
+              <div className={`w-3 h-3 rounded-full ${getStatusColor(assistant.status)} mr-2`}></div>
+              <span className="text-gray-600">Status:</span>
+              <span className="ml-1 font-medium capitalize">{assistant.status}</span>
+            </div>
+
+            <div className="flex items-center text-sm">
+              <span className="mr-2 text-lg">{getMoodEmoji(assistant.mood)}</span>
+              <span className="text-gray-600">Mood:</span>
+              <span className="ml-1 font-medium capitalize">{assistant.mood}</span>
+            </div>
+
+            {assistant.currentAction && (
+              <div className="flex items-center text-sm">
+                <span className="text-gray-600">Action:</span>
+                <span className="ml-1 font-medium">{assistant.currentAction}</span>
+              </div>
+            )}
+
+            <div className="flex items-center text-sm">
+              <span className="text-gray-600">Position:</span>
+              <span className="ml-1 font-mono text-xs">({Math.round(assistant.position.x)}, {Math.round(assistant.position.y)})</span>
+            </div>
+          </div>
+
+          {/* Expression Controls */}
+          {availableExpressions && availableExpressions.length > 1 && (
+            <div className="border-t pt-3">
+              <h4 className="text-sm font-medium mb-2 text-gray-700">Expression</h4>
+              <div className="flex flex-wrap gap-1">
+                {availableExpressions.map((expression) => (
+                  <button
+                    key={expression}
+                    onClick={() => handleExpressionChange(expression)}
+                    className={`px-2 py-1 text-xs rounded border transition-colors ${
+                      currentExpression === expression
+                        ? 'bg-blue-100 border-blue-300 text-blue-700'
+                        : 'bg-white border-gray-300 hover:bg-gray-50 text-gray-600'
+                    }`}
+                    title={`Switch to ${expression} expression`}
+                  >
+                    {expression}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
