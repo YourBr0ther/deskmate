@@ -300,6 +300,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       timestamp: new Date().toISOString()
     });
 
+    // Set typing indicator immediately for better UX
+    set({ isTyping: true });
+
     // Get current persona context for Brain Council
     const getPersonaContext = () => {
       try {
@@ -443,6 +446,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 // Handle incoming WebSocket messages
 function handleWebSocketMessage(message: any) {
   const { type, data } = message;
+  console.log('WebSocket message received:', type, data);
   const store = useChatStore.getState();
 
   switch (type) {
@@ -469,6 +473,9 @@ function handleWebSocketMessage(message: any) {
       break;
 
     case 'chat_stream':
+      // Hide typing indicator when streaming starts
+      store.setTyping(false);
+
       // Find the last assistant message and update it
       const messages = store.messages;
       const lastMessage = messages[messages.length - 1];
@@ -489,17 +496,10 @@ function handleWebSocketMessage(message: any) {
       break;
 
     case 'assistant_typing':
+      console.log('Assistant typing event:', data.typing);
       store.setTyping(data.typing);
-      if (data.typing) {
-        // Add placeholder message
-        store.addMessage({
-          role: 'assistant',
-          content: '',
-          timestamp: new Date().toISOString(),
-          isStreaming: true
-        });
-      } else {
-        // Mark last message as complete
+      if (!data.typing) {
+        // Mark last message as complete when typing stops
         const lastMsg = store.messages[store.messages.length - 1];
         if (lastMsg && lastMsg.isStreaming) {
           store.updateMessage(lastMsg.id, { isStreaming: false });

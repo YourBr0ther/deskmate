@@ -179,7 +179,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
               }`}
             >
               <p className="text-sm leading-relaxed">
-                {message.content || (message.isStreaming ? 'Thinking...' : '')}
+                {message.content}
               </p>
               <div className="flex items-center justify-between mt-1">
                 <p className={`text-xs ${
