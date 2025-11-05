@@ -5,16 +5,11 @@
  * full messaging functionality and assistant interaction.
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { useDeviceDetection } from '../../hooks/useDeviceDetection';
-
-interface Message {
-  id: string;
-  content: string;
-  sender: 'user' | 'assistant';
-  timestamp: Date;
-  type?: 'text' | 'action' | 'system';
-}
+import { useChatStore } from '../../stores/chatStore';
+import { usePersonaStore } from '../../stores/personaStore';
+import ModelSelector from './ModelSelector';
 
 interface ChatContainerProps {
   className?: string;
@@ -29,20 +24,27 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   style = {}
 }) => {
   const deviceInfo = useDeviceDetection();
-  const [inputValue, setInputValue] = useState('');
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      content: "Hello! I'm your DeskMate assistant. I can help you navigate the room, interact with objects, and answer questions. What would you like to do?",
-      sender: 'assistant',
-      timestamp: new Date(),
-      type: 'text'
-    }
-  ]);
-  const [isTyping, setIsTyping] = useState(false);
-  const [assistantMood, setAssistantMood] = useState('happy');
   const inputRef = useRef<HTMLInputElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
+
+  // Chat store state
+  const {
+    messages,
+    currentMessage,
+    isConnected,
+    isTyping,
+    setCurrentMessage,
+    sendMessage,
+    clearChat,
+    connect,
+    disconnect,
+    currentModel,
+    availableModels,
+    requestChatHistory
+  } = useChatStore();
+
+  // Persona store state
+  const { selectedPersona } = usePersonaStore();
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -51,134 +53,26 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     }
   }, [messages]);
 
+  // Auto-connect on mount
+  useEffect(() => {
+    connect();
+    return () => disconnect();
+  }, [connect, disconnect]);
+
+  // Load chat history when persona changes
+  useEffect(() => {
+    if (selectedPersona && isConnected) {
+      // Request chat history for the new persona
+      const personaName = selectedPersona.persona.data.name;
+      console.log(`Loading chat history for persona: ${personaName}`);
+      requestChatHistory(personaName);
+    }
+  }, [selectedPersona, isConnected, requestChatHistory]);
+
   // Handle sending a message
   const handleSendMessage = async () => {
-    if (!inputValue.trim()) return;
-
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      content: inputValue.trim(),
-      sender: 'user',
-      timestamp: new Date(),
-      type: 'text'
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    setInputValue('');
-    setIsTyping(true);
-
-    // Simulate assistant response with more variety
-    setTimeout(() => {
-      const response = generateAssistantResponse(userMessage.content);
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: response.content,
-        sender: 'assistant',
-        timestamp: new Date(),
-        type: response.type
-      };
-
-      setMessages(prev => [...prev, assistantMessage]);
-      setAssistantMood(response.mood);
-      setIsTyping(false);
-    }, Math.random() * 1500 + 500); // Variable response time
-  };
-
-  // Enhanced response generator
-  const generateAssistantResponse = (userMessage: string): {
-    content: string;
-    type: 'text' | 'action' | 'system';
-    mood: string;
-  } => {
-    const lowerMessage = userMessage.toLowerCase();
-
-    // Movement commands
-    if (lowerMessage.includes('move') || lowerMessage.includes('go to')) {
-      return {
-        content: "I'd be happy to move! Just click on the floor plan where you'd like me to go, and I'll pathfind my way there.",
-        type: 'action',
-        mood: 'excited'
-      };
-    }
-
-    // Object interaction
-    if (lowerMessage.includes('lamp') || lowerMessage.includes('light')) {
-      return {
-        content: "I can help with the lamps! Click on any lamp in the room and I'll turn it on or off for you. I can also adjust brightness if it's a smart lamp.",
-        type: 'action',
-        mood: 'helpful'
-      };
-    }
-
-    if (lowerMessage.includes('sit') || lowerMessage.includes('chair') || lowerMessage.includes('sofa')) {
-      return {
-        content: "Sure! I can sit on the sofa, chairs, or bed. Just click on the furniture you'd like me to sit on. It's quite comfortable!",
-        type: 'action',
-        mood: 'content'
-      };
-    }
-
-    // Room navigation
-    if (lowerMessage.includes('room') || lowerMessage.includes('kitchen') || lowerMessage.includes('bedroom')) {
-      return {
-        content: "I can move between rooms through the doorways. Click on a doorway or use the room selector at the top to navigate. Each room has different objects to interact with!",
-        type: 'action',
-        mood: 'enthusiastic'
-      };
-    }
-
-    // Information requests
-    if (lowerMessage.includes('what can you do') || lowerMessage.includes('help')) {
-      return {
-        content: "I can move around the room, interact with objects like lamps and furniture, sit on chairs, and chat with you! Try clicking on objects or empty spaces to see what I can do. I'm also learning about your preferences over time.",
-        type: 'text',
-        mood: 'informative'
-      };
-    }
-
-    if (lowerMessage.includes('weather') || lowerMessage.includes('time')) {
-      return {
-        content: `It's currently ${new Date().toLocaleTimeString()} and I can see the room lighting is nice right now. I don't have access to outside weather, but the room feels comfortable!`,
-        type: 'text',
-        mood: 'observant'
-      };
-    }
-
-    // Friendly responses
-    if (lowerMessage.includes('hello') || lowerMessage.includes('hi')) {
-      const greetings = [
-        "Hello! Great to see you! How can I help you explore the room today?",
-        "Hi there! I'm excited to assist you. What would you like to do?",
-        "Hey! Welcome back! Ready for some room exploration?"
-      ];
-      return {
-        content: greetings[Math.floor(Math.random() * greetings.length)],
-        type: 'text',
-        mood: 'happy'
-      };
-    }
-
-    if (lowerMessage.includes('thank') || lowerMessage.includes('thanks')) {
-      return {
-        content: "You're welcome! I'm always happy to help. Is there anything else you'd like to explore or any objects you'd like me to interact with?",
-        type: 'text',
-        mood: 'pleased'
-      };
-    }
-
-    // Default responses
-    const defaultResponses = [
-      "That's interesting! I'm still learning about everything in this room. Would you like me to show you what I can do with the objects here?",
-      "I understand! Let me know if you'd like me to move somewhere or interact with any furniture. I'm here to help!",
-      "Thanks for letting me know! I'm always learning from our conversations. Want to explore the room together?",
-      "I appreciate you sharing that with me! Is there anything specific you'd like me to help you with in the room?"
-    ];
-
-    return {
-      content: defaultResponses[Math.floor(Math.random() * defaultResponses.length)],
-      type: 'text',
-      mood: 'curious'
-    };
+    if (!currentMessage.trim() || !isConnected) return;
+    await sendMessage(currentMessage);
   };
 
   // Handle input key press
@@ -191,30 +85,24 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 
   // Clear chat history
   const handleClearChat = () => {
-    setMessages([{
-      id: 'welcome',
-      content: "Chat cleared! How can I help you today?",
-      sender: 'assistant',
-      timestamp: new Date(),
-      type: 'system'
-    }]);
+    clearChat('current');
   };
 
-  // Get assistant emoji based on mood
-  const getAssistantEmoji = (mood: string) => {
-    const moodEmojis: Record<string, string> = {
-      happy: '😊',
-      excited: '🤩',
-      helpful: '🤗',
-      content: '😌',
-      enthusiastic: '🎉',
-      informative: '🤓',
-      observant: '👀',
-      pleased: '😄',
-      curious: '🤔'
+  // Get current persona info
+  const getPersonaInfo = () => {
+    if (selectedPersona) {
+      return {
+        name: selectedPersona.persona.data.name,
+        creator: selectedPersona.persona.data.creator || 'Unknown'
+      };
+    }
+    return {
+      name: 'No Assistant Selected',
+      creator: 'System'
     };
-    return moodEmojis[mood] || '😊';
   };
+
+  const personaInfo = getPersonaInfo();
 
   return (
     <div className={`chat-container flex flex-col h-full bg-white ${className}`} style={style}>
@@ -222,20 +110,28 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
       <div className="assistant-status flex items-center justify-between p-3 bg-gray-50 border-b border-gray-200">
         <div className="flex items-center space-x-3">
           <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
-            <span className="text-white text-sm">{getAssistantEmoji(assistantMood)}</span>
+            <span className="text-white text-sm">
+              {selectedPersona ? '🤖' : '❌'}
+            </span>
           </div>
           <div>
-            <p className="text-sm font-medium text-gray-800">DeskMate Assistant</p>
-            <p className="text-xs text-gray-500 capitalize">Feeling {assistantMood}</p>
+            <p className="text-sm font-medium text-gray-800">{personaInfo.name}</p>
+            <p className="text-xs text-gray-500">
+              {isConnected ? `Connected • ${personaInfo.creator}` : 'Disconnected'}
+            </p>
           </div>
         </div>
 
-        {/* Chat controls */}
-        <div className="flex items-center space-x-1">
+        {/* Chat controls and model selector */}
+        <div className="flex items-center space-x-2">
+          <div className="text-xs text-gray-500">
+            {availableModels.find(m => m.id === currentModel)?.name || currentModel}
+          </div>
           <button
             onClick={handleClearChat}
             className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded"
             title="Clear chat"
+            disabled={!isConnected}
           >
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" clipRule="evenodd" />
@@ -245,33 +141,58 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         </div>
       </div>
 
+      {/* Model Selector */}
+      <div className="p-3 bg-gray-800">
+        <ModelSelector />
+      </div>
+
       {/* Messages Area */}
       <div
         ref={messagesRef}
         className="messages-area flex-1 overflow-y-auto p-4 space-y-4"
       >
+        {messages.length === 0 && (
+          <div className="flex justify-center items-center h-full">
+            <div className="text-center text-gray-500">
+              <p className="text-sm">
+                {selectedPersona
+                  ? `Start a conversation with ${personaInfo.name}!`
+                  : 'Please select an assistant to begin chatting'
+                }
+              </p>
+            </div>
+          </div>
+        )}
+
         {messages.map((message) => (
           <div
             key={message.id}
-            className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+            className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
               className={`max-w-[80%] px-4 py-2 rounded-lg ${
-                message.sender === 'user'
+                message.role === 'user'
                   ? 'bg-blue-500 text-white rounded-br-sm'
-                  : message.type === 'system'
+                  : message.role === 'system'
                   ? 'bg-yellow-100 text-yellow-800 rounded-bl-sm'
-                  : message.type === 'action'
-                  ? 'bg-green-100 text-green-800 rounded-bl-sm'
                   : 'bg-gray-100 text-gray-800 rounded-bl-sm'
               }`}
             >
-              <p className="text-sm leading-relaxed">{message.content}</p>
-              <p className={`text-xs mt-1 ${
-                message.sender === 'user' ? 'text-blue-100' : 'text-gray-500'
-              }`}>
-                {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              <p className="text-sm leading-relaxed">
+                {message.content || (message.isStreaming ? 'Thinking...' : '')}
               </p>
+              <div className="flex items-center justify-between mt-1">
+                <p className={`text-xs ${
+                  message.role === 'user' ? 'text-blue-100' : 'text-gray-500'
+                }`}>
+                  {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </p>
+                {message.model && message.role === 'assistant' && (
+                  <p className="text-xs ml-2 text-gray-400">
+                    {message.model}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         ))}
@@ -300,17 +221,23 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
             <input
               ref={inputRef}
               type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
+              value={currentMessage}
+              onChange={(e) => setCurrentMessage(e.target.value)}
               onKeyPress={handleKeyPress}
-              placeholder="Ask me anything or give me commands..."
+              placeholder={
+                !isConnected
+                  ? "Connecting..."
+                  : !selectedPersona
+                  ? "Select an assistant first..."
+                  : "Ask me anything or give me commands..."
+              }
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-              disabled={isTyping}
+              disabled={!isConnected || isTyping || !selectedPersona}
             />
           </div>
           <button
             onClick={handleSendMessage}
-            disabled={!inputValue.trim() || isTyping}
+            disabled={!currentMessage.trim() || !isConnected || isTyping || !selectedPersona}
             className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -320,26 +247,38 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         </div>
 
         {/* Quick action buttons */}
-        <div className="flex items-center space-x-2 mt-3">
-          <button
-            onClick={() => setInputValue("Move to the kitchen")}
-            className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200"
-          >
-            Move to kitchen
-          </button>
-          <button
-            onClick={() => setInputValue("Turn on the lamp")}
-            className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200"
-          >
-            Turn on lamp
-          </button>
-          <button
-            onClick={() => setInputValue("Sit on the sofa")}
-            className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200"
-          >
-            Sit on sofa
-          </button>
-        </div>
+        {isConnected && selectedPersona && (
+          <div className="flex items-center space-x-2 mt-3">
+            <button
+              onClick={() => setCurrentMessage("Hello! How are you today?")}
+              className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200"
+              disabled={isTyping}
+            >
+              Say hello
+            </button>
+            <button
+              onClick={() => setCurrentMessage("Move to the kitchen")}
+              className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200"
+              disabled={isTyping}
+            >
+              Move to kitchen
+            </button>
+            <button
+              onClick={() => setCurrentMessage("Turn on the lamp")}
+              className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200"
+              disabled={isTyping}
+            >
+              Turn on lamp
+            </button>
+            <button
+              onClick={() => setCurrentMessage("/idle")}
+              className="px-3 py-1 text-xs bg-purple-100 text-purple-700 rounded-full hover:bg-purple-200"
+              disabled={isTyping}
+            >
+              /idle mode
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

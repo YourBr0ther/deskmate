@@ -162,6 +162,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 await handle_model_change(websocket, message_data)
             elif message_type == "clear_chat":
                 await handle_clear_chat(websocket, message_data)
+            elif message_type == "request_chat_history":
+                await handle_request_chat_history(websocket, message_data)
             elif message_type == "idle_command":
                 await handle_idle_command(websocket, message_data)
             else:
@@ -624,6 +626,62 @@ async def handle_idle_command(websocket: WebSocket, data: Dict[str, Any]):
         await connection_manager.send_personal_message({
             "type": "error",
             "data": {"message": f"Failed to execute idle command: {str(e)}"},
+            "timestamp": datetime.now().isoformat()
+        }, websocket)
+
+
+async def handle_request_chat_history(websocket: WebSocket, data: Dict[str, Any]):
+    """Handle chat history request for a specific persona."""
+    try:
+        persona_name = data.get("persona_name")
+
+        if not persona_name:
+            await connection_manager.send_personal_message({
+                "type": "error",
+                "data": {"message": "Persona name is required"},
+                "timestamp": datetime.now().isoformat()
+            }, websocket)
+            return
+
+        # Initialize conversation memory for this persona
+        conversation_id = await conversation_memory.initialize_conversation(
+            persona_name=persona_name,
+            load_history=True
+        )
+
+        # Get chat history
+        messages = await conversation_memory.get_chat_history(limit=50)
+
+        # Convert to frontend format
+        formatted_messages = []
+        for msg in messages:
+            formatted_messages.append({
+                "id": f"msg_{msg['id']}",
+                "role": msg["role"],
+                "content": msg["content"],
+                "timestamp": msg["timestamp"],
+                "model": msg.get("model")
+            })
+
+        # Send chat history
+        await connection_manager.send_personal_message({
+            "type": "chat_history_loaded",
+            "data": {
+                "messages": formatted_messages,
+                "count": len(formatted_messages),
+                "persona_name": persona_name,
+                "conversation_id": conversation_id
+            },
+            "timestamp": datetime.now().isoformat()
+        }, websocket)
+
+        logger.info(f"Loaded {len(formatted_messages)} messages for persona: {persona_name}")
+
+    except Exception as e:
+        logger.error(f"Error loading chat history: {e}")
+        await connection_manager.send_personal_message({
+            "type": "error",
+            "data": {"message": f"Failed to load chat history: {str(e)}"},
             "timestamp": datetime.now().isoformat()
         }, websocket)
 

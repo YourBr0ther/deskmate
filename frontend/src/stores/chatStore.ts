@@ -50,6 +50,7 @@ interface ChatState {
   updateMessage: (id: string, updates: Partial<ChatMessage>) => void;
   clearMessages: () => void;
   loadChatHistory: (messages: ChatMessage[]) => void;
+  requestChatHistory: (personaName: string) => void;
 
   // WebSocket actions
   connect: () => void;
@@ -117,6 +118,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
       id: msg.id || generateId(), // Use existing ID or generate new one
     }));
     set({ messages: formattedMessages });
+  },
+
+  requestChatHistory: (personaName: string) => {
+    const { websocket, isConnected } = get();
+
+    if (!isConnected || !websocket) {
+      console.warn('Cannot request chat history: not connected');
+      return;
+    }
+
+    // Clear current messages first
+    set({ messages: [] });
+
+    // Request chat history for the persona
+    websocket.send(JSON.stringify({
+      type: 'request_chat_history',
+      data: {
+        persona_name: personaName
+      }
+    }));
   },
 
   // Model management
