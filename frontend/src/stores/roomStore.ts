@@ -6,6 +6,15 @@ import { create } from 'zustand';
 import { RoomState, GridObject, Assistant, Position, GridMap, StorageItem } from '../types/room';
 import { StoreErrorState, createInitialErrorState, withErrorHandling } from '../utils/storeErrorHandler';
 import { api } from '../utils/api';
+import {
+  ROOM_WIDTH,
+  ROOM_HEIGHT,
+  distance,
+  canInteract,
+  isWithinBounds,
+  clampToRoom,
+  LegacyGridConverter
+} from '../utils/coordinateSystem';
 
 interface RoomStore extends RoomState, StoreErrorState {
   // Actions
@@ -61,24 +70,28 @@ interface RoomStore extends RoomState, StoreErrorState {
   getObjectAt: (position: Position) => GridObject | undefined;
 }
 
-// Grid constants
-const GRID_WIDTH = 64;
-const GRID_HEIGHT = 16;
-const CELL_WIDTH = 20;
-const CELL_HEIGHT = 30;
+// Room dimensions in pixels (unified coordinate system)
+const ROOM_PIXEL_WIDTH = ROOM_WIDTH;   // 1920 pixels
+const ROOM_PIXEL_HEIGHT = ROOM_HEIGHT; // 480 pixels
 
-// Mobile grid constants (8x8 for mobile screens)
-const MOBILE_GRID_WIDTH = 8;
-const MOBILE_GRID_HEIGHT = 8;
+// Legacy grid constants (for backward compatibility only)
+const LEGACY_GRID_WIDTH = 64;
+const LEGACY_GRID_HEIGHT = 16;
+const CELL_SIZE = 30;  // pixels per cell
 
-// Initial room objects (basic furniture)
+// Mobile scaled dimensions (for responsive design)
+const MOBILE_SCALE_FACTOR = 0.25; // Mobile shows 1/4 scale
+const MOBILE_WIDTH = ROOM_PIXEL_WIDTH * MOBILE_SCALE_FACTOR;
+const MOBILE_HEIGHT = ROOM_PIXEL_HEIGHT * MOBILE_SCALE_FACTOR;
+
+// Initial room objects (basic furniture) - now using pixel coordinates
 const initialObjects: GridObject[] = [
   {
     id: 'bed',
     type: 'furniture',
     name: 'Bed',
-    position: { x: 50, y: 12 },
-    size: { width: 8, height: 4 },
+    position: { x: 1500, y: 360 }, // Converted from grid (50, 12)
+    size: { width: 240, height: 120 }, // Converted from grid (8, 4)
     solid: true,
     interactive: true,
     movable: false,
@@ -88,8 +101,8 @@ const initialObjects: GridObject[] = [
     id: 'desk',
     type: 'furniture',
     name: 'Desk',
-    position: { x: 10, y: 2 },
-    size: { width: 6, height: 3 },
+    position: { x: 300, y: 60 }, // Converted from grid (10, 2)
+    size: { width: 180, height: 90 }, // Converted from grid (6, 3)
     solid: true,
     interactive: true,
     movable: false,
@@ -99,8 +112,8 @@ const initialObjects: GridObject[] = [
     id: 'window',
     type: 'furniture',
     name: 'Window',
-    position: { x: 30, y: 0 },
-    size: { width: 8, height: 1 },
+    position: { x: 900, y: 0 }, // Converted from grid (30, 0)
+    size: { width: 240, height: 30 }, // Converted from grid (8, 1)
     solid: false,
     interactive: true,
     movable: false,
@@ -110,8 +123,8 @@ const initialObjects: GridObject[] = [
     id: 'door',
     type: 'furniture',
     name: 'Door',
-    position: { x: 0, y: 8 },
-    size: { width: 1, height: 3 },
+    position: { x: 0, y: 240 }, // Converted from grid (0, 8)
+    size: { width: 30, height: 90 }, // Converted from grid (1, 3)
     solid: false,
     interactive: true,
     movable: false,
@@ -119,10 +132,10 @@ const initialObjects: GridObject[] = [
   }
 ];
 
-// Initial assistant state
+// Initial assistant state - now using pixel coordinates
 const initialAssistant: Assistant = {
   id: 'assistant',
-  position: { x: 32, y: 8 }, // Center of room
+  position: { x: ROOM_PIXEL_WIDTH / 2, y: ROOM_PIXEL_HEIGHT / 2 }, // Center of room (960, 240)
   isMoving: false,
   mood: 'neutral',
   status: 'idle',
@@ -131,9 +144,9 @@ const initialAssistant: Assistant = {
 };
 
 export const useRoomStore = create<RoomStore>((set, get) => ({
-  // Initial state
-  gridSize: { width: GRID_WIDTH, height: GRID_HEIGHT },
-  cellSize: { width: CELL_WIDTH, height: CELL_HEIGHT },
+  // Initial state - now using pixel-based dimensions
+  gridSize: { width: ROOM_PIXEL_WIDTH, height: ROOM_PIXEL_HEIGHT },
+  cellSize: { width: 1, height: 1 }, // No longer applicable with pixel coordinates
   objects: initialObjects,
   assistant: initialAssistant,
   selectedObject: undefined,
@@ -208,8 +221,8 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
     set((state) => ({
       viewMode: mode,
       gridSize: mode === 'mobile'
-        ? { width: MOBILE_GRID_WIDTH, height: MOBILE_GRID_HEIGHT }
-        : { width: GRID_WIDTH, height: GRID_HEIGHT }
+        ? { width: MOBILE_WIDTH, height: MOBILE_HEIGHT }
+        : { width: ROOM_PIXEL_WIDTH, height: ROOM_PIXEL_HEIGHT }
     })),
 
   // Drag and Drop Actions
@@ -282,13 +295,19 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
     );
   },
 
-  // Computed values
+  // Computed values - updated for pixel coordinates
   getGridMap: () => {
-    const { objects, assistant, gridSize } = get();
+    const { objects, assistant, viewMode } = get();
+
+    // For backward compatibility, create a logical grid overlay on pixel coordinates
+    const logicalGridWidth = viewMode === 'mobile' ? 32 : LEGACY_GRID_WIDTH;
+    const logicalGridHeight = viewMode === 'mobile' ? 8 : LEGACY_GRID_HEIGHT;
+    const cellSizeX = ROOM_PIXEL_WIDTH / logicalGridWidth;
+    const cellSizeY = ROOM_PIXEL_HEIGHT / logicalGridHeight;
 
     // Initialize empty grid
-    const grid: GridMap = Array(gridSize.height).fill(null).map((_, y) =>
-      Array(gridSize.width).fill(null).map((_, x) => ({
+    const grid: GridMap = Array(logicalGridHeight).fill(null).map((_, y) =>
+      Array(logicalGridWidth).fill(null).map((_, x) => ({
         x,
         y,
         occupied: false,
@@ -296,11 +315,16 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
       }))
     );
 
-    // Mark object positions
+    // Mark object positions - convert pixel positions to logical grid
     objects.forEach((obj) => {
-      for (let y = obj.position.y; y < obj.position.y + obj.size.height; y++) {
-        for (let x = obj.position.x; x < obj.position.x + obj.size.width; x++) {
-          if (x >= 0 && x < gridSize.width && y >= 0 && y < gridSize.height) {
+      const gridStartX = Math.floor(obj.position.x / cellSizeX);
+      const gridStartY = Math.floor(obj.position.y / cellSizeY);
+      const gridEndX = Math.ceil((obj.position.x + obj.size.width) / cellSizeX);
+      const gridEndY = Math.ceil((obj.position.y + obj.size.height) / cellSizeY);
+
+      for (let y = gridStartY; y < gridEndY && y < logicalGridHeight; y++) {
+        for (let x = gridStartX; x < gridEndX && x < logicalGridWidth; x++) {
+          if (x >= 0 && y >= 0) {
             grid[y][x].occupied = true;
             grid[y][x].objectId = obj.id;
             grid[y][x].walkable = !obj.solid;
@@ -309,12 +333,15 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
       }
     });
 
-    // Mark assistant position
-    const { x, y } = assistant.position;
-    if (x >= 0 && x < gridSize.width && y >= 0 && y < gridSize.height) {
-      grid[y][x].occupied = true;
-      grid[y][x].objectId = assistant.id;
-      grid[y][x].walkable = false;
+    // Mark assistant position - convert pixel position to logical grid
+    const assistantGridX = Math.floor(assistant.position.x / cellSizeX);
+    const assistantGridY = Math.floor(assistant.position.y / cellSizeY);
+
+    if (assistantGridX >= 0 && assistantGridX < logicalGridWidth &&
+        assistantGridY >= 0 && assistantGridY < logicalGridHeight) {
+      grid[assistantGridY][assistantGridX].occupied = true;
+      grid[assistantGridY][assistantGridX].objectId = assistant.id;
+      grid[assistantGridY][assistantGridX].walkable = false;
     }
 
     return grid;
@@ -323,27 +350,45 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
   getGridDimensions: () => {
     const { viewMode } = get();
     return viewMode === 'mobile'
-      ? { width: MOBILE_GRID_WIDTH, height: MOBILE_GRID_HEIGHT }
-      : { width: GRID_WIDTH, height: GRID_HEIGHT };
+      ? { width: MOBILE_WIDTH, height: MOBILE_HEIGHT }
+      : { width: ROOM_PIXEL_WIDTH, height: ROOM_PIXEL_HEIGHT };
   },
 
   isPositionOccupied: (position) => {
     const { objects, assistant } = get();
 
-    // Check assistant position
-    if (assistant.position.x === position.x && assistant.position.y === position.y) {
+    // Check assistant position - using pixel-based collision detection
+    const assistantSize = 30; // Assistant size in pixels
+    const assistantRect = {
+      x: assistant.position.x,
+      y: assistant.position.y,
+      width: assistantSize,
+      height: assistantSize
+    };
+
+    const pointRect = {
+      x: position.x,
+      y: position.y,
+      width: 1,
+      height: 1
+    };
+
+    // Check collision with assistant
+    if (assistantRect.x < pointRect.x + pointRect.width &&
+        assistantRect.x + assistantRect.width > pointRect.x &&
+        assistantRect.y < pointRect.y + pointRect.height &&
+        assistantRect.y + assistantRect.height > pointRect.y) {
       return true;
     }
 
-    // Check objects
+    // Check objects using pixel-based collision detection
     return objects.some((obj) => {
-      return (
-        position.x >= obj.position.x &&
-        position.x < obj.position.x + obj.size.width &&
-        position.y >= obj.position.y &&
-        position.y < obj.position.y + obj.size.height &&
-        obj.solid
-      );
+      if (!obj.solid) return false;
+
+      return (obj.position.x < position.x + 1 &&
+              obj.position.x + obj.size.width > position.x &&
+              obj.position.y < position.y + 1 &&
+              obj.position.y + obj.size.height > position.y);
     });
   },
 

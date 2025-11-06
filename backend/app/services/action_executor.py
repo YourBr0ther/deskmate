@@ -14,6 +14,10 @@ from datetime import datetime
 from app.services.assistant_service import assistant_service
 from app.services.room_service import room_service
 from app.services.multi_room_pathfinding import multi_room_pathfinding_service
+from app.utils.coordinate_system import (
+    Position, Size, BoundingBox, distance, can_interact,
+    ROOM_WIDTH, ROOM_HEIGHT, INTERACTION_DISTANCE
+)
 from app.exceptions import (
     ActionExecutionError, PathfindingError, ObjectInteractionError,
     DatabaseError, ValidationError, wrap_exception
@@ -294,19 +298,23 @@ class ActionExecutor:
             # Get interaction type
             interaction_type = parameters.get("interaction", "activate")
 
-            # Check if assistant is close enough
+            # Check if assistant is close enough using unified coordinate system
             assistant_state = await assistant_service.get_assistant_state()
-            distance = self._calculate_distance(
-                (assistant_state.position_x, assistant_state.position_y),
-                (target_obj.get("position", {}).get("x", 0),
-                 target_obj.get("position", {}).get("y", 0))
-            )
+            assistant_pos = Position(assistant_state.position_x, assistant_state.position_y)
 
-            if distance > 2:  # Must be within 2 cells to interact
+            # Extract object position
+            obj_position = target_obj.get("position", {})
+            if isinstance(obj_position, dict):
+                obj_pos = Position.from_dict(obj_position)
+            else:
+                obj_pos = Position(obj_position.get("x", 0), obj_position.get("y", 0))
+
+            if not can_interact(assistant_pos, obj_pos):
+                actual_distance = distance(assistant_pos, obj_pos)
                 return {
                     "action": "interact",
                     "success": False,
-                    "error": f"Too far from {target_obj['name']} (distance: {distance})"
+                    "error": f"Too far from {target_obj['name']} (distance: {int(actual_distance)}px, max: {int(INTERACTION_DISTANCE)}px)"
                 }
 
             # Execute interaction based on type
@@ -493,19 +501,23 @@ class ActionExecutor:
                     "error": f"{target_obj['name']} cannot be picked up"
                 }
 
-            # Check if assistant is close enough to pick up
+            # Check if assistant is close enough to pick up using unified coordinate system
             assistant_state = await assistant_service.get_assistant_state()
-            distance = self._calculate_distance(
-                (assistant_state.position_x, assistant_state.position_y),
-                (target_obj.get("position", {}).get("x", 0),
-                 target_obj.get("position", {}).get("y", 0))
-            )
+            assistant_pos = Position(assistant_state.position_x, assistant_state.position_y)
 
-            if distance > 2:  # Must be within 2 cells to pick up
+            # Extract object position
+            obj_position = target_obj.get("position", {})
+            if isinstance(obj_position, dict):
+                obj_pos = Position.from_dict(obj_position)
+            else:
+                obj_pos = Position(obj_position.get("x", 0), obj_position.get("y", 0))
+
+            if not can_interact(assistant_pos, obj_pos):
+                actual_distance = distance(assistant_pos, obj_pos)
                 return {
                     "action": "pick_up",
                     "success": False,
-                    "error": f"Too far from {target_obj['name']} (distance: {distance}). Move closer first."
+                    "error": f"Too far from {target_obj['name']} (distance: {int(actual_distance)}px). Move closer first."
                 }
 
             # Check if already holding something
@@ -612,12 +624,12 @@ class ActionExecutor:
                 target_x = assistant_state.position_x
                 target_y = assistant_state.position_y
 
-            # Validate target location is within grid bounds
-            if target_x < 0 or target_x >= 64 or target_y < 0 or target_y >= 16:
+            # Validate target location is within room bounds
+            if target_x < 0 or target_x > ROOM_WIDTH or target_y < 0 or target_y > ROOM_HEIGHT:
                 return {
                     "action": "put_down",
                     "success": False,
-                    "error": f"Target location ({target_x}, {target_y}) is outside room boundaries"
+                    "error": f"Target location ({target_x}, {target_y}) is outside room boundaries (0,0) to ({ROOM_WIDTH},{ROOM_HEIGHT})"
                 }
 
             # Check for collisions with other objects
@@ -635,17 +647,19 @@ class ActionExecutor:
                     "error": f"Cannot place {held_object['name']} at ({target_x}, {target_y}): {collision_result['reason']}"
                 }
 
-            # Check distance from assistant (should be within reach)
-            distance = self._calculate_distance(
-                (assistant_state.position_x, assistant_state.position_y),
-                (target_x, target_y)
-            )
+            # Check distance from assistant (should be within reach) - using unified coordinate system
+            assistant_pos = Position(assistant_state.position_x, assistant_state.position_y)
+            target_pos = Position(target_x, target_y)
+            distance_to_target = distance(assistant_pos, target_pos)
 
-            if distance > 3:  # Allow slightly more range for putting down
+            # Allow slightly more range for putting down than interaction distance
+            max_put_down_distance = INTERACTION_DISTANCE * 1.2
+
+            if distance_to_target > max_put_down_distance:
                 return {
                     "action": "put_down",
                     "success": False,
-                    "error": f"Target location too far away (distance: {distance}). Move closer first."
+                    "error": f"Target location too far away (distance: {int(distance_to_target)}px). Move closer first."
                 }
 
             # Execute the put down
@@ -796,30 +810,33 @@ class ActionExecutor:
         else:
             return "down" if dy > 0 else "up"
 
-    def _calculate_distance(self, pos1: Tuple[int, int], pos2: Tuple[int, int]) -> int:
-        """Calculate Manhattan distance between two positions."""
-        return abs(pos1[0] - pos2[0]) + abs(pos1[1] - pos2[1])
+    # Legacy _calculate_distance method removed - now using unified coordinate system utilities
 
     async def _check_object_collision(
         self,
-        x: int,
-        y: int,
-        width: int,
-        height: int,
+        x: float,
+        y: float,
+        width: float,
+        height: float,
         exclude_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Check if placing an object at given position would cause collisions.
 
+        Uses unified coordinate system with pixel-based calculations.
+
         Args:
-            x, y: Top-left position of object
-            width, height: Size of object
+            x, y: Top-left position of object (pixels)
+            width, height: Size of object (pixels)
             exclude_id: Object ID to exclude from collision check (e.g., object being moved)
 
         Returns:
             Dict with collision info: {"has_collision": bool, "reason": str, "colliding_objects": list}
         """
         try:
+            # Create bounding box for the object being placed
+            placing_box = BoundingBox(Position(x, y), Size(width, height))
+
             # Get all objects in room
             objects = await room_service.get_all_objects()
 
@@ -835,35 +852,48 @@ class ActionExecutor:
                 if not obj.get("properties", {}).get("solid", True):
                     continue
 
-                # Get object position and size
-                obj_x = obj.get("position", {}).get("x", 0)
-                obj_y = obj.get("position", {}).get("y", 0)
-                obj_width = obj.get("size", {}).get("width", 1)
-                obj_height = obj.get("size", {}).get("height", 1)
+                # Get object position and size using unified coordinate system
+                try:
+                    obj_position = obj.get("position", {})
+                    if isinstance(obj_position, dict):
+                        obj_pos = Position.from_dict(obj_position)
+                    else:
+                        obj_pos = Position(obj_position.get("x", 0), obj_position.get("y", 0))
 
-                # Check for overlap using rectangle collision detection
-                if (x < obj_x + obj_width and
-                    x + width > obj_x and
-                    y < obj_y + obj_height and
-                    y + height > obj_y):
+                    obj_size = obj.get("size", {})
+                    if isinstance(obj_size, dict):
+                        obj_sz = Size.from_dict(obj_size)
+                    else:
+                        obj_sz = Size(obj_size.get("width", 30), obj_size.get("height", 30))  # Default size
 
-                    colliding_objects.append({
-                        "id": obj["id"],
-                        "name": obj["name"],
-                        "position": {"x": obj_x, "y": obj_y},
-                        "size": {"width": obj_width, "height": obj_height}
-                    })
+                    # Create bounding box for existing object
+                    obj_box = BoundingBox(obj_pos, obj_sz)
+
+                    # Check for overlap using BoundingBox collision detection
+                    if placing_box.overlaps_with(obj_box):
+                        colliding_objects.append({
+                            "id": obj["id"],
+                            "name": obj["name"],
+                            "position": obj_pos.to_dict(),
+                            "size": obj_sz.to_dict()
+                        })
+
+                except (ValueError, TypeError, KeyError) as e:
+                    logger.warning(f"Invalid object data for collision check: {obj.get('id', 'unknown')}: {e}")
+                    continue
 
             # Check collision with assistant position (can't place object on assistant)
             assistant_state = await assistant_service.get_assistant_state()
-            if (x <= assistant_state.position_x < x + width and
-                y <= assistant_state.position_y < y + height):
+            assistant_pos = Position(assistant_state.position_x, assistant_state.position_y)
+            assistant_size = Size(30, 30)  # Assistant size in pixels (roughly 1 grid cell)
+            assistant_box = BoundingBox(assistant_pos, assistant_size)
 
+            if placing_box.overlaps_with(assistant_box):
                 colliding_objects.append({
                     "id": "assistant",
                     "name": "Assistant",
-                    "position": {"x": assistant_state.position_x, "y": assistant_state.position_y},
-                    "size": {"width": 1, "height": 1}
+                    "position": assistant_pos.to_dict(),
+                    "size": assistant_size.to_dict()
                 })
 
             if colliding_objects:
