@@ -14,6 +14,10 @@ from datetime import datetime
 from app.services.assistant_service import assistant_service
 from app.services.room_service import room_service
 from app.services.multi_room_pathfinding import multi_room_pathfinding_service
+from app.exceptions import (
+    ActionExecutionError, PathfindingError, ObjectInteractionError,
+    DatabaseError, ValidationError, wrap_exception
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +60,19 @@ class ActionExecutor:
                 # Small delay between actions for visual clarity
                 await asyncio.sleep(0.2)
 
+            except ActionExecutionError as e:
+                logger.error(f"Action execution error for {action.get('type', 'unknown')}: {e.message}",
+                           extra={"error_code": e.error_code, "details": e.details})
+                results["failed"] += 1
             except Exception as e:
-                logger.error(f"Error executing action {action}: {e}")
+                # Wrap unknown exceptions for better error tracking
+                wrapped_exception = wrap_exception(e, {
+                    "context": "execute_action",
+                    "action_type": action.get("type", "unknown"),
+                    "action": action
+                })
+                logger.error(f"Unexpected error executing action: {wrapped_exception.message}",
+                           extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details})
                 results["failed"] += 1
                 results["action_results"].append({
                     "action": action,
@@ -219,12 +234,35 @@ class ActionExecutor:
                 "path_length": len(path)
             }
 
-        except Exception as e:
-            logger.error(f"Move execution error: {e}")
+        except PathfindingError as e:
+            logger.error(f"Pathfinding error in move execution: {e.message}",
+                        extra={"error_code": e.error_code, "details": e.details})
             return {
                 "action": "move",
                 "success": False,
-                "error": str(e)
+                "error": f"Cannot reach destination: {e.message}"
+            }
+        except DatabaseError as e:
+            logger.error(f"Database error in move execution: {e.message}",
+                        extra={"error_code": e.error_code, "details": e.details})
+            return {
+                "action": "move",
+                "success": False,
+                "error": "Failed to update position in database"
+            }
+        except Exception as e:
+            # Wrap unknown exceptions for better error tracking
+            wrapped_exception = wrap_exception(e, {
+                "context": "execute_move",
+                "target_x": x,
+                "target_y": y
+            })
+            logger.error(f"Unexpected error in move execution: {wrapped_exception.message}",
+                        extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details})
+            return {
+                "action": "move",
+                "success": False,
+                "error": f"Move failed: {wrapped_exception.message}"
             }
 
     async def _execute_interact(
@@ -321,12 +359,34 @@ class ActionExecutor:
                 "message": message
             }
 
-        except Exception as e:
-            logger.error(f"Interact execution error: {e}")
+        except ObjectInteractionError as e:
+            logger.error(f"Object interaction error: {e.message}",
+                        extra={"error_code": e.error_code, "details": e.details})
             return {
                 "action": "interact",
                 "success": False,
-                "error": str(e)
+                "error": f"Interaction failed: {e.message}"
+            }
+        except DatabaseError as e:
+            logger.error(f"Database error in interact execution: {e.message}",
+                        extra={"error_code": e.error_code, "details": e.details})
+            return {
+                "action": "interact",
+                "success": False,
+                "error": "Failed to update object state"
+            }
+        except Exception as e:
+            # Wrap unknown exceptions for better error tracking
+            wrapped_exception = wrap_exception(e, {
+                "context": "execute_interact",
+                "target": target
+            })
+            logger.error(f"Unexpected error in interact execution: {wrapped_exception.message}",
+                        extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details})
+            return {
+                "action": "interact",
+                "success": False,
+                "error": f"Interaction failed: {wrapped_exception.message}"
             }
 
     async def _execute_state_change(
@@ -368,12 +428,36 @@ class ActionExecutor:
                 "state": {state_key: state_value}
             }
 
-        except Exception as e:
-            logger.error(f"State change execution error: {e}")
+        except ValidationError as e:
+            logger.error(f"Validation error in state change: {e.message}",
+                        extra={"error_code": e.error_code, "details": e.details})
             return {
                 "action": "state_change",
                 "success": False,
-                "error": str(e)
+                "error": f"Invalid state change: {e.message}"
+            }
+        except DatabaseError as e:
+            logger.error(f"Database error in state change: {e.message}",
+                        extra={"error_code": e.error_code, "details": e.details})
+            return {
+                "action": "state_change",
+                "success": False,
+                "error": "Failed to update object state"
+            }
+        except Exception as e:
+            # Wrap unknown exceptions for better error tracking
+            wrapped_exception = wrap_exception(e, {
+                "context": "execute_state_change",
+                "target": target,
+                "property": property_name,
+                "value": new_value
+            })
+            logger.error(f"Unexpected error in state change: {wrapped_exception.message}",
+                        extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details})
+            return {
+                "action": "state_change",
+                "success": False,
+                "error": f"State change failed: {wrapped_exception.message}"
             }
 
     async def _execute_pick_up(
@@ -453,12 +537,34 @@ class ActionExecutor:
                 "message": f"Picked up {target_obj['name']}"
             }
 
-        except Exception as e:
-            logger.error(f"Pick up execution error: {e}")
+        except ObjectInteractionError as e:
+            logger.error(f"Object interaction error in pick up: {e.message}",
+                        extra={"error_code": e.error_code, "details": e.details})
             return {
                 "action": "pick_up",
                 "success": False,
-                "error": str(e)
+                "error": f"Cannot pick up object: {e.message}"
+            }
+        except DatabaseError as e:
+            logger.error(f"Database error in pick up: {e.message}",
+                        extra={"error_code": e.error_code, "details": e.details})
+            return {
+                "action": "pick_up",
+                "success": False,
+                "error": "Failed to update object state"
+            }
+        except Exception as e:
+            # Wrap unknown exceptions for better error tracking
+            wrapped_exception = wrap_exception(e, {
+                "context": "execute_pick_up",
+                "object_id": object_id
+            })
+            logger.error(f"Unexpected error in pick up: {wrapped_exception.message}",
+                        extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details})
+            return {
+                "action": "pick_up",
+                "success": False,
+                "error": f"Pick up failed: {wrapped_exception.message}"
             }
 
     async def _execute_put_down(
@@ -582,12 +688,34 @@ class ActionExecutor:
                 "message": f"Put down {held_object['name']} at ({target_x}, {target_y})"
             }
 
-        except Exception as e:
-            logger.error(f"Put down execution error: {e}")
+        except ObjectInteractionError as e:
+            logger.error(f"Object interaction error in put down: {e.message}",
+                        extra={"error_code": e.error_code, "details": e.details})
             return {
                 "action": "put_down",
                 "success": False,
-                "error": str(e)
+                "error": f"Cannot put down object: {e.message}"
+            }
+        except DatabaseError as e:
+            logger.error(f"Database error in put down: {e.message}",
+                        extra={"error_code": e.error_code, "details": e.details})
+            return {
+                "action": "put_down",
+                "success": False,
+                "error": "Failed to update object position"
+            }
+        except Exception as e:
+            # Wrap unknown exceptions for better error tracking
+            wrapped_exception = wrap_exception(e, {
+                "context": "execute_put_down",
+                "position": {"x": x, "y": y} if x is not None and y is not None else None
+            })
+            logger.error(f"Unexpected error in put down: {wrapped_exception.message}",
+                        extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details})
+            return {
+                "action": "put_down",
+                "success": False,
+                "error": f"Put down failed: {wrapped_exception.message}"
             }
 
     async def _execute_expression(
@@ -619,12 +747,26 @@ class ActionExecutor:
                 "message": f"Changed expression to {expression}"
             }
 
-        except Exception as e:
-            logger.error(f"Expression execution error: {e}")
+        except DatabaseError as e:
+            logger.error(f"Database error in expression change: {e.message}",
+                        extra={"error_code": e.error_code, "details": e.details})
             return {
                 "action": "expression",
                 "success": False,
-                "error": str(e)
+                "error": "Failed to update assistant expression"
+            }
+        except Exception as e:
+            # Wrap unknown exceptions for better error tracking
+            wrapped_exception = wrap_exception(e, {
+                "context": "execute_expression",
+                "expression": expression
+            })
+            logger.error(f"Unexpected error in expression change: {wrapped_exception.message}",
+                        extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details})
+            return {
+                "action": "expression",
+                "success": False,
+                "error": f"Expression change failed: {wrapped_exception.message}"
             }
 
     def _parse_coordinates(self, target: Any) -> Tuple[Optional[int], Optional[int]]:
@@ -739,11 +881,26 @@ class ActionExecutor:
                 "colliding_objects": []
             }
 
-        except Exception as e:
-            logger.error(f"Collision check error: {e}")
+        except DatabaseError as e:
+            logger.error(f"Database error in collision check: {e.message}",
+                        extra={"error_code": e.error_code, "details": e.details})
             return {
                 "has_collision": True,
-                "reason": f"collision check failed: {str(e)}",
+                "reason": "collision check failed: database error",
+                "colliding_objects": []
+            }
+        except Exception as e:
+            # Wrap unknown exceptions for better error tracking
+            wrapped_exception = wrap_exception(e, {
+                "context": "check_collision",
+                "position": {"x": x, "y": y},
+                "size": {"width": width, "height": height}
+            })
+            logger.error(f"Unexpected error in collision check: {wrapped_exception.message}",
+                        extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details})
+            return {
+                "has_collision": True,
+                "reason": f"collision check failed: {wrapped_exception.message}",
                 "colliding_objects": []
             }
 

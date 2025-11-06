@@ -4,8 +4,10 @@
 
 import { create } from 'zustand';
 import { RoomState, GridObject, Assistant, Position, GridMap, StorageItem } from '../types/room';
+import { StoreErrorState, createInitialErrorState, withErrorHandling } from '../utils/storeErrorHandler';
+import { api } from '../utils/api';
 
-interface RoomStore extends RoomState {
+interface RoomStore extends RoomState, StoreErrorState {
   // Actions
   setAssistantPosition: (position: Position) => void;
   moveAssistant: (targetPosition: Position) => void;
@@ -48,6 +50,9 @@ interface RoomStore extends RoomState {
   isStoragePlacementActive: boolean;
   startStoragePlacement: (itemId: string) => void;
   clearStoragePlacement: () => void;
+
+  // Error handling
+  clearError: () => void;
 
   // Computed values
   getGridMap: () => GridMap;
@@ -141,6 +146,12 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
   selectedStorageItemId: null,
   isStoragePlacementActive: false,
 
+  // Error handling state
+  ...createInitialErrorState(),
+
+  // Clear error
+  clearError: () => set({ error: null, lastErrorTimestamp: null }),
+
   // Assistant actions
   setAssistantPosition: (position) =>
     set((state) => ({
@@ -206,33 +217,30 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
     set({ draggedObject: objectId }),
 
   moveObjectToPosition: async (objectId, position) => {
-    try {
-      const response = await fetch(`/api/room/objects/${objectId}/move`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(position),
-      });
+    return withErrorHandling(
+      async () => {
+        const result = await api.moveObject(objectId, position);
 
-      if (response.ok) {
-        // Update local state
-        const { objects } = get();
-        const updatedObjects = objects.map(obj =>
-          obj.id === objectId
-            ? { ...obj, position }
-            : obj
-        );
-        set({ objects: updatedObjects });
-        return true;
-      } else {
-        console.error('Failed to move object:', response.statusText);
-        return false;
+        if (result.success) {
+          // Update local state
+          const { objects } = get();
+          const updatedObjects = objects.map(obj =>
+            obj.id === objectId ? { ...obj, position } : obj
+          );
+          set({ objects: updatedObjects });
+          return true;
+        } else {
+          throw new Error(result.error || 'Failed to move object');
+        }
+      },
+      {
+        storeName: 'roomStore',
+        operation: 'moveObjectToPosition',
+        setState: (update) => set(update),
+        onSuccess: () => true,
+        onError: () => false,
       }
-    } catch (error) {
-      console.error('Error moving object:', error);
-      return false;
-    }
+    ).then(result => result || false);
   },
 
   // API Actions
@@ -240,31 +248,38 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
     set({ objects }),
 
   loadObjectsFromAPI: async () => {
-    try {
-      const response = await fetch('/api/room/objects');
-      if (response.ok) {
-        const apiObjects = await response.json();
+    await withErrorHandling(
+      async () => {
+        const result = await api.getObjects();
 
-        // Convert API objects to frontend format
-        const frontendObjects: GridObject[] = apiObjects.map((obj: any) => ({
-          id: obj.id,
-          type: obj.type,
-          name: obj.name,
-          position: obj.position,
-          size: obj.size,
-          solid: obj.properties.solid,
-          interactive: obj.properties.interactive,
-          movable: obj.properties.movable,
-          states: obj.states || {}
-        }));
+        if (result.success) {
+          const apiObjects = result.data;
 
-        set({ objects: frontendObjects });
-      } else {
-        console.error('Failed to load objects from API');
+          // Convert API objects to frontend format
+          const frontendObjects: GridObject[] = apiObjects.map((obj: any) => ({
+            id: obj.id,
+            type: obj.type,
+            name: obj.name,
+            position: obj.position,
+            size: obj.size,
+            solid: obj.properties.solid,
+            interactive: obj.properties.interactive,
+            movable: obj.properties.movable,
+            states: obj.states || {}
+          }));
+
+          set({ objects: frontendObjects });
+          return frontendObjects;
+        } else {
+          throw new Error(result.error || 'Failed to load objects');
+        }
+      },
+      {
+        storeName: 'roomStore',
+        operation: 'loadObjectsFromAPI',
+        setState: (update) => set(update),
       }
-    } catch (error) {
-      console.error('Error loading objects:', error);
-    }
+    );
   },
 
   // Computed values

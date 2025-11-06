@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import health, personas, room, assistant, chat, websocket, conversation, brain_council, room_navigation, frontend
 from app.config import config
 from app.db.database import init_db
-from app.middleware import RateLimitMiddleware
+from app.middleware import RateLimitMiddleware, ErrorHandlerMiddleware
 
 logging.basicConfig(level=getattr(logging, config.log_level))
 logger = logging.getLogger(__name__)
@@ -38,7 +38,8 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add middleware (order matters - rate limiting first, then CORS)
+# Add middleware (order matters - error handling first, then rate limiting, then CORS)
+app.add_middleware(ErrorHandlerMiddleware)
 app.add_middleware(RateLimitMiddleware)
 
 # CORS settings from configuration

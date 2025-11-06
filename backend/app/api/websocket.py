@@ -23,6 +23,10 @@ from app.services.room_service import room_service
 from app.services.conversation_memory import conversation_memory
 from app.services.action_executor import action_executor
 from app.services.idle_controller import idle_controller
+from app.exceptions import (
+    WebSocketError, BrainCouncilError, ActionExecutionError,
+    DatabaseError, AIServiceError, wrap_exception
+)
 from app.services.dream_memory import dream_memory
 
 logger = logging.getLogger(__name__)
@@ -52,7 +56,14 @@ class ConnectionManager:
         try:
             await websocket.send_text(json.dumps(message))
         except Exception as e:
-            logger.error(f"Error sending personal message: {e}")
+            # Wrap as WebSocket error for better tracking
+            ws_error = WebSocketError(
+                f"Failed to send personal message: {str(e)}",
+                details={"message_type": message.get("type"), "target": "personal"},
+                original_exception=e
+            )
+            logger.error(f"WebSocket error sending personal message: {ws_error.message}",
+                        extra={"error_code": ws_error.error_code, "details": ws_error.details})
             self.disconnect(websocket)
 
     async def broadcast(self, message: dict):
@@ -62,7 +73,14 @@ class ConnectionManager:
             try:
                 await connection.send_text(json.dumps(message))
             except Exception as e:
-                logger.error(f"Error broadcasting to connection: {e}")
+                # Wrap as WebSocket error for better tracking
+                ws_error = WebSocketError(
+                    f"Failed to broadcast message: {str(e)}",
+                    details={"message_type": message.get("type"), "target": "broadcast"},
+                    original_exception=e
+                )
+                logger.error(f"WebSocket error broadcasting message: {ws_error.message}",
+                            extra={"error_code": ws_error.error_code, "details": ws_error.details})
                 disconnected.add(connection)
 
         # Remove failed connections
@@ -100,8 +118,15 @@ async def websocket_endpoint(websocket: WebSocket):
                 "data": assistant_state.to_dict(),
                 "timestamp": datetime.now().isoformat()
             }, websocket)
+        except DatabaseError as e:
+            logger.warning(f"Database error getting initial assistant state: {e.message}",
+                          extra={"error_code": e.error_code, "details": e.details})
+            # Send a default state
         except Exception as e:
-            logger.warning(f"Could not get assistant state: {e}")
+            # Wrap unknown exceptions for better error tracking
+            wrapped_exception = wrap_exception(e, {"context": "websocket_initial_state"})
+            logger.warning(f"Unexpected error getting initial assistant state: {wrapped_exception.message}",
+                          extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details})
             # Send a default state
             await connection_manager.send_personal_message({
                 "type": "assistant_state",
@@ -177,10 +202,14 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.info("Client disconnected normally")
         connection_manager.disconnect(websocket)
     except Exception as e:
-        logger.error(f"Unexpected WebSocket error: {e}")
-        logger.error(f"Exception type: {type(e)}")
-        import traceback
-        logger.error(f"Full traceback: {traceback.format_exc()}")
+        # Wrap unknown exceptions for better error tracking
+        wrapped_exception = wrap_exception(e, {
+            "context": "websocket_connection_handler",
+            "connection_id": id(websocket)
+        })
+        logger.error(f"Unexpected WebSocket error: {wrapped_exception.message}",
+                    extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details},
+                    exc_info=True)
         connection_manager.disconnect(websocket)
 
 
@@ -327,16 +356,36 @@ async def handle_chat_message(websocket: WebSocket, data: Dict[str, Any]):
         if council_decision.get("reasoning"):
             logger.info(f"Council reasoning: {council_decision['reasoning']}")
 
+    except BrainCouncilError as e:
+        logger.error(f"Brain Council error handling chat message: {e.message}",
+                    extra={"error_code": e.error_code, "details": e.details})
+        await connection_manager.send_personal_message({
+            "type": "error",
+            "data": {"message": "I'm having trouble processing that request right now."},
+            "timestamp": datetime.now().isoformat()
+        }, websocket)
+    except AIServiceError as e:
+        logger.error(f"AI service error handling chat message: {e.message}",
+                    extra={"error_code": e.error_code, "details": e.details})
+        await connection_manager.send_personal_message({
+            "type": "error",
+            "data": {"message": "I'm experiencing technical difficulties with my AI systems."},
+            "timestamp": datetime.now().isoformat()
+        }, websocket)
     except Exception as e:
-        logger.error(f"Error handling chat message: {e}")
-        logger.error(f"Exception type: {type(e)}")
-        import traceback
-        logger.error(f"Full traceback: {traceback.format_exc()}")
+        # Wrap unknown exceptions for better error tracking
+        wrapped_exception = wrap_exception(e, {
+            "context": "handle_chat_message",
+            "message_content": data.get("message", "")[:100] if isinstance(data, dict) else str(data)[:100]
+        })
+        logger.error(f"Unexpected error handling chat message: {wrapped_exception.message}",
+                    extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details},
+                    exc_info=True)
 
         # Send error to client
         await connection_manager.send_personal_message({
             "type": "error",
-            "data": {"message": f"Failed to process chat: {str(e)}"},
+            "data": {"message": "Failed to process chat message."},
             "timestamp": datetime.now().isoformat()
         }, websocket)
 
@@ -371,10 +420,15 @@ async def execute_council_actions(actions: List[Dict[str, Any]], websocket: WebS
             for failed in failed_actions:
                 logger.warning(f"Action failed: {failed}")
 
+    except ActionExecutionError as e:
+        logger.error(f"Action execution error: {e.message}",
+                    extra={"error_code": e.error_code, "details": e.details})
     except Exception as e:
-        logger.error(f"Error in execute_council_actions: {e}")
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
+        # Wrap unknown exceptions for better error tracking
+        wrapped_exception = wrap_exception(e, {"context": "execute_council_actions"})
+        logger.error(f"Unexpected error executing council actions: {wrapped_exception.message}",
+                    extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details},
+                    exc_info=True)
 
 
 async def update_assistant_mood(new_mood: str):
@@ -382,8 +436,14 @@ async def update_assistant_mood(new_mood: str):
     try:
         # This would be implemented in assistant_service if needed
         logger.info(f"Assistant mood updated to: {new_mood}")
+    except DatabaseError as e:
+        logger.error(f"Database error updating assistant mood: {e.message}",
+                    extra={"error_code": e.error_code, "details": e.details})
     except Exception as e:
-        logger.error(f"Error updating assistant mood: {e}")
+        # Wrap unknown exceptions for better error tracking
+        wrapped_exception = wrap_exception(e, {"context": "update_assistant_mood"})
+        logger.error(f"Unexpected error updating assistant mood: {wrapped_exception.message}",
+                    extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details})
 
 
 async def handle_assistant_move(websocket: WebSocket, data: Dict[str, Any]):
@@ -418,8 +478,19 @@ async def handle_assistant_move(websocket: WebSocket, data: Dict[str, Any]):
                 "timestamp": datetime.now().isoformat()
             }, websocket)
 
+    except ActionExecutionError as e:
+        logger.error(f"Action execution error handling assistant move: {e.message}",
+                    extra={"error_code": e.error_code, "details": e.details})
+        await connection_manager.send_personal_message({
+            "type": "error",
+            "data": {"message": "Movement failed. Unable to reach that location."},
+            "timestamp": datetime.now().isoformat()
+        }, websocket)
     except Exception as e:
-        logger.error(f"Error handling assistant move: {e}")
+        # Wrap unknown exceptions for better error tracking
+        wrapped_exception = wrap_exception(e, {"context": "handle_assistant_move"})
+        logger.error(f"Unexpected error handling assistant move: {wrapped_exception.message}",
+                    extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details})
         await connection_manager.send_personal_message({
             "type": "error",
             "data": {"message": f"Failed to move assistant: {str(e)}"},
@@ -442,8 +513,19 @@ async def handle_get_state(websocket: WebSocket):
             "timestamp": datetime.now().isoformat()
         }, websocket)
 
+    except DatabaseError as e:
+        logger.error(f"Database error getting state: {e.message}",
+                    extra={"error_code": e.error_code, "details": e.details})
+        await connection_manager.send_personal_message({
+            "type": "error",
+            "data": {"message": "Unable to retrieve current state."},
+            "timestamp": datetime.now().isoformat()
+        }, websocket)
     except Exception as e:
-        logger.error(f"Error getting state: {e}")
+        # Wrap unknown exceptions for better error tracking
+        wrapped_exception = wrap_exception(e, {"context": "handle_get_state"})
+        logger.error(f"Unexpected error getting state: {wrapped_exception.message}",
+                    extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details})
         await connection_manager.send_personal_message({
             "type": "error",
             "data": {"message": f"Failed to get state: {str(e)}"},
@@ -490,8 +572,19 @@ async def handle_model_change(websocket: WebSocket, data: Dict[str, Any]):
                 "timestamp": datetime.now().isoformat()
             }, websocket)
 
+    except AIServiceError as e:
+        logger.error(f"AI service error changing model: {e.message}",
+                    extra={"error_code": e.error_code, "details": e.details})
+        await connection_manager.send_personal_message({
+            "type": "error",
+            "data": {"message": "Failed to change AI model."},
+            "timestamp": datetime.now().isoformat()
+        }, websocket)
     except Exception as e:
-        logger.error(f"Error changing model: {e}")
+        # Wrap unknown exceptions for better error tracking
+        wrapped_exception = wrap_exception(e, {"context": "handle_model_change"})
+        logger.error(f"Unexpected error changing model: {wrapped_exception.message}",
+                    extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details})
         await connection_manager.send_personal_message({
             "type": "error",
             "data": {"message": f"Failed to change model: {str(e)}"},
@@ -545,8 +638,19 @@ async def handle_clear_chat(websocket: WebSocket, data: Dict[str, Any]):
                 "timestamp": datetime.now().isoformat()
             }, websocket)
 
+    except DatabaseError as e:
+        logger.error(f"Database error clearing chat: {e.message}",
+                    extra={"error_code": e.error_code, "details": e.details})
+        await connection_manager.send_personal_message({
+            "type": "error",
+            "data": {"message": "Failed to clear chat history."},
+            "timestamp": datetime.now().isoformat()
+        }, websocket)
     except Exception as e:
-        logger.error(f"Error clearing chat: {e}")
+        # Wrap unknown exceptions for better error tracking
+        wrapped_exception = wrap_exception(e, {"context": "handle_clear_chat"})
+        logger.error(f"Unexpected error clearing chat: {wrapped_exception.message}",
+                    extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details})
         await connection_manager.send_personal_message({
             "type": "error",
             "data": {"message": f"Failed to clear chat: {str(e)}"},
@@ -622,7 +726,10 @@ async def handle_idle_command(websocket: WebSocket, data: Dict[str, Any]):
         await broadcast_assistant_update()
 
     except Exception as e:
-        logger.error(f"Error handling idle command: {e}")
+        # Wrap unknown exceptions for better error tracking
+        wrapped_exception = wrap_exception(e, {"context": "handle_idle_command"})
+        logger.error(f"Unexpected error handling idle command: {wrapped_exception.message}",
+                    extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details})
         await connection_manager.send_personal_message({
             "type": "error",
             "data": {"message": f"Failed to execute idle command: {str(e)}"},
@@ -677,8 +784,19 @@ async def handle_request_chat_history(websocket: WebSocket, data: Dict[str, Any]
 
         logger.info(f"Loaded {len(formatted_messages)} messages for persona: {persona_name}")
 
+    except DatabaseError as e:
+        logger.error(f"Database error loading chat history: {e.message}",
+                    extra={"error_code": e.error_code, "details": e.details})
+        await connection_manager.send_personal_message({
+            "type": "error",
+            "data": {"message": "Failed to load chat history."},
+            "timestamp": datetime.now().isoformat()
+        }, websocket)
     except Exception as e:
-        logger.error(f"Error loading chat history: {e}")
+        # Wrap unknown exceptions for better error tracking
+        wrapped_exception = wrap_exception(e, {"context": "handle_request_chat_history"})
+        logger.error(f"Unexpected error loading chat history: {wrapped_exception.message}",
+                    extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details})
         await connection_manager.send_personal_message({
             "type": "error",
             "data": {"message": f"Failed to load chat history: {str(e)}"},
@@ -696,8 +814,14 @@ async def broadcast_assistant_update():
             "data": assistant_state.to_dict(),
             "timestamp": datetime.now().isoformat()
         })
+    except DatabaseError as e:
+        logger.error(f"Database error broadcasting assistant update: {e.message}",
+                    extra={"error_code": e.error_code, "details": e.details})
     except Exception as e:
-        logger.error(f"Error broadcasting assistant update: {e}")
+        # Wrap unknown exceptions for better error tracking
+        wrapped_exception = wrap_exception(e, {"context": "broadcast_assistant_update"})
+        logger.error(f"Unexpected error broadcasting assistant update: {wrapped_exception.message}",
+                    extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details})
 
 
 # Export for use in other modules
