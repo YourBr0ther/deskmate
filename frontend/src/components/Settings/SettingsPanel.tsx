@@ -50,6 +50,27 @@ const SettingsPanel: React.FC = () => {
     document.documentElement.style.setProperty('--panel-opacity', (display.panelTransparency / 100).toString());
   }, [display.panelTransparency]);
 
+  // Focus management and keyboard navigation
+  useEffect(() => {
+    if (!isSettingsOpen) return;
+
+    // Focus the panel when it opens
+    const settingsPanel = document.querySelector('[role="dialog"]') as HTMLElement;
+    if (settingsPanel) {
+      settingsPanel.focus();
+    }
+
+    // Handle escape key to close settings
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeSettings();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isSettingsOpen, closeSettings]);
+
   if (!isSettingsOpen) return null;
 
   const tabButtons = [
@@ -61,16 +82,23 @@ const SettingsPanel: React.FC = () => {
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+    <div
+      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-title"
+      tabIndex={-1}
+    >
       <div className="w-full max-w-4xl h-full max-h-[90vh] panel-transparent rounded-lg shadow-2xl border border-themed-primary flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-700">
-          <h2 className="text-2xl font-bold text-white">Settings</h2>
+          <h2 id="settings-title" className="text-2xl font-bold text-white">Settings</h2>
           <button
             onClick={closeSettings}
             className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+            aria-label="Close settings panel"
           >
-            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -79,7 +107,7 @@ const SettingsPanel: React.FC = () => {
         <div className="flex flex-1 overflow-hidden">
           {/* Sidebar */}
           <div className="w-64 bg-gray-900 border-r border-gray-700 p-4">
-            <nav className="space-y-2">
+            <nav className="space-y-2" role="tablist" aria-label="Settings categories">
               {tabButtons.map((tab) => (
                 <button
                   key={tab.id}
@@ -89,8 +117,12 @@ const SettingsPanel: React.FC = () => {
                       ? 'bg-blue-600 text-white'
                       : 'text-gray-300 hover:bg-gray-700'
                   }`}
+                  role="tab"
+                  aria-selected={activeSettingsTab === tab.id}
+                  aria-controls={`settings-panel-${tab.id}`}
+                  id={`settings-tab-${tab.id}`}
                 >
-                  <span className="text-lg">{tab.icon}</span>
+                  <span className="text-lg" aria-hidden="true">{tab.icon}</span>
                   <span className="font-medium">{tab.label}</span>
                 </button>
               ))}

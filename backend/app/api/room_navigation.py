@@ -9,7 +9,8 @@ This module provides REST endpoints for:
 """
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
 import logging
@@ -67,7 +68,7 @@ class RoomListResponse(BaseModel):
 async def navigate_to_position(
     request: NavigateRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """Navigate assistant to specified position with automatic room transitions."""
     try:
@@ -150,7 +151,7 @@ async def discover_templates():
 
 
 @router.post("/templates/load-all")
-async def load_all_templates(db: Session = Depends(get_db)):
+async def load_all_templates(db: AsyncSession = Depends(get_db)):
     """Load all discovered templates into the database."""
     try:
         from app.services.template_loader import template_loader_service
@@ -176,7 +177,7 @@ async def load_all_templates(db: Session = Depends(get_db)):
 
 
 @router.post("/templates/load/{template_file}")
-async def load_single_template(template_file: str, db: Session = Depends(get_db)):
+async def load_single_template(template_file: str, db: AsyncSession = Depends(get_db)):
     """Load a single template file into the database."""
     try:
         from app.services.template_loader import template_loader_service
@@ -214,10 +215,12 @@ async def load_single_template(template_file: str, db: Session = Depends(get_db)
 
 # Floor Plan Management
 @router.get("/floor-plans", response_model=List[Dict[str, Any]])
-async def get_floor_plans(db: Session = Depends(get_db)):
+async def get_floor_plans(db: AsyncSession = Depends(get_db)):
     """Get all available floor plan templates."""
     try:
-        floor_plans = db.query(FloorPlan).filter(FloorPlan.is_template == True).all()
+        stmt = select(FloorPlan).filter(FloorPlan.is_template == True)
+        result = await db.execute(stmt)
+        floor_plans = result.scalars().all()
 
         return [
             {
@@ -245,10 +248,12 @@ async def get_floor_plans(db: Session = Depends(get_db)):
 
 
 @router.get("/floor-plans/{floor_plan_id}", response_model=FloorPlanResponse)
-async def get_floor_plan(floor_plan_id: str, db: Session = Depends(get_db)):
+async def get_floor_plan(floor_plan_id: str, db: AsyncSession = Depends(get_db)):
     """Get detailed floor plan information."""
     try:
-        floor_plan = db.query(FloorPlan).filter(FloorPlan.id == floor_plan_id).first()
+        stmt = select(FloorPlan).filter(FloorPlan.id == floor_plan_id)
+        result = await db.execute(stmt)
+        floor_plan = result.scalar_one_or_none()
 
         if not floor_plan:
             raise HTTPException(status_code=404, detail="Floor plan not found")
@@ -263,7 +268,7 @@ async def get_floor_plan(floor_plan_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/floor-plans/{floor_plan_id}/activate")
-async def activate_floor_plan(floor_plan_id: str, assistant_id: str = "default", db: Session = Depends(get_db)):
+async def activate_floor_plan(floor_plan_id: str, assistant_id: str = "default", db: AsyncSession = Depends(get_db)):
     """Activate a floor plan and move assistant to default position."""
     try:
         from app.services.template_loader import template_loader_service
@@ -283,10 +288,12 @@ async def activate_floor_plan(floor_plan_id: str, assistant_id: str = "default",
 
 
 @router.get("/floor-plans/active")
-async def get_active_floor_plan(db: Session = Depends(get_db)):
+async def get_active_floor_plan(db: AsyncSession = Depends(get_db)):
     """Get the currently active floor plan."""
     try:
-        active_floor_plan = db.query(FloorPlan).filter(FloorPlan.is_active == True).first()
+        stmt = select(FloorPlan).filter(FloorPlan.is_active == True)
+        result = await db.execute(stmt)
+        active_floor_plan = result.scalar_one_or_none()
 
         if not active_floor_plan:
             return {"active_floor_plan": None, "message": "No active floor plan"}
@@ -334,10 +341,14 @@ async def validate_template(template_data: Dict[str, Any]):
 
 # Room Information
 @router.get("/current", response_model=RoomListResponse)
-async def get_current_rooms(assistant_id: str = "default", db: Session = Depends(get_db)):
+async def get_current_rooms(assistant_id: str = "default", db: AsyncSession = Depends(get_db)):
     """Get current room information and available rooms."""
     try:
-        assistant = db.query(AssistantState).filter(AssistantState.id == assistant_id).first()
+        from sqlalchemy import func
+
+        stmt = select(AssistantState).filter(AssistantState.id == assistant_id)
+        result = await db.execute(stmt)
+        assistant = result.scalar_one_or_none()
 
         if not assistant or not assistant.current_floor_plan_id:
             return RoomListResponse(
@@ -347,21 +358,27 @@ async def get_current_rooms(assistant_id: str = "default", db: Session = Depends
             )
 
         # Get all rooms in current floor plan
-        rooms = db.query(Room).filter(Room.floor_plan_id == assistant.current_floor_plan_id).all()
+        stmt = select(Room).filter(Room.floor_plan_id == assistant.current_floor_plan_id)
+        result = await db.execute(stmt)
+        rooms = result.scalars().all()
 
         room_data = []
         for room in rooms:
             # Get furniture count
-            furniture_count = db.query(FurnitureItem).filter(
+            stmt = select(func.count(FurnitureItem.id)).filter(
                 FurnitureItem.room_id == room.id
-            ).count()
+            )
+            result = await db.execute(stmt)
+            furniture_count = result.scalar()
 
             # Get connected rooms via doorways
             connected_rooms = []
-            doorways = db.query(Doorway).filter(
+            stmt = select(Doorway).filter(
                 (Doorway.room_a_id == room.id) | (Doorway.room_b_id == room.id),
                 Doorway.is_accessible == True
-            ).all()
+            )
+            result = await db.execute(stmt)
+            doorways = result.scalars().all()
 
             for doorway in doorways:
                 connected_room_id = doorway.room_b_id if doorway.room_a_id == room.id else doorway.room_a_id
@@ -392,10 +409,12 @@ async def get_current_rooms(assistant_id: str = "default", db: Session = Depends
 
 
 @router.get("/doorways/{floor_plan_id}")
-async def get_doorways(floor_plan_id: str, db: Session = Depends(get_db)):
+async def get_doorways(floor_plan_id: str, db: AsyncSession = Depends(get_db)):
     """Get all doorways in floor plan with position information."""
     try:
-        doorways = db.query(Doorway).filter(Doorway.floor_plan_id == floor_plan_id).all()
+        stmt = select(Doorway).filter(Doorway.floor_plan_id == floor_plan_id)
+        result = await db.execute(stmt)
+        doorways = result.scalars().all()
 
         doorway_data = []
         for doorway in doorways:
@@ -415,11 +434,13 @@ async def get_doorways(floor_plan_id: str, db: Session = Depends(get_db)):
 @router.post("/pathfind/preview")
 async def preview_path(
     request: NavigateRequest,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """Preview navigation path without executing movement."""
     try:
-        assistant = db.query(AssistantState).filter(AssistantState.id == request.assistant_id).first()
+        stmt = select(AssistantState).filter(AssistantState.id == request.assistant_id)
+        result = await db.execute(stmt)
+        assistant = result.scalar_one_or_none()
         if not assistant:
             raise HTTPException(status_code=404, detail="Assistant not found")
 
@@ -456,10 +477,12 @@ async def preview_path(
 
 # Assistant Position
 @router.get("/assistant/position/{assistant_id}")
-async def get_assistant_position(assistant_id: str = "default", db: Session = Depends(get_db)):
+async def get_assistant_position(assistant_id: str = "default", db: AsyncSession = Depends(get_db)):
     """Get current assistant position and room information."""
     try:
-        assistant = db.query(AssistantState).filter(AssistantState.id == assistant_id).first()
+        stmt = select(AssistantState).filter(AssistantState.id == assistant_id)
+        result = await db.execute(stmt)
+        assistant = result.scalar_one_or_none()
 
         if not assistant:
             raise HTTPException(status_code=404, detail="Assistant not found")

@@ -650,7 +650,7 @@ async def handle_request_chat_history(websocket: WebSocket, data: Dict[str, Any]
         )
 
         # Get chat history
-        messages = await conversation_memory.get_chat_history(limit=50)
+        messages = await conversation_memory.get_chat_history_for_frontend(limit=50)
 
         # Convert to frontend format
         formatted_messages = []
