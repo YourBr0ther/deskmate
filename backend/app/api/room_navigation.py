@@ -155,7 +155,7 @@ async def load_all_templates(db: AsyncSession = Depends(get_db)):
     """Load all discovered templates into the database."""
     try:
         from app.services.template_loader import template_loader_service
-        results = template_loader_service.load_all_templates(db)
+        results = await template_loader_service.load_all_templates(db)
 
         success_count = sum(1 for success in results.values() if success)
         total_count = len(results)
@@ -197,7 +197,7 @@ async def load_single_template(template_file: str, db: AsyncSession = Depends(ge
             }
 
         # Load to database
-        success = template_loader_service.load_template_to_database(db, template_data)
+        success = await template_loader_service.load_template_to_database(db, template_data)
 
         return {
             "success": success,
@@ -218,7 +218,10 @@ async def load_single_template(template_file: str, db: AsyncSession = Depends(ge
 async def get_floor_plans(db: AsyncSession = Depends(get_db)):
     """Get all available floor plan templates."""
     try:
-        stmt = select(FloorPlan).filter(FloorPlan.is_template == True)
+        from sqlalchemy.orm import selectinload
+
+        # Explicitly load the rooms relationship to avoid lazy loading issues
+        stmt = select(FloorPlan).options(selectinload(FloorPlan.rooms)).filter(FloorPlan.is_template == True)
         result = await db.execute(stmt)
         floor_plans = result.scalars().all()
 
@@ -247,51 +250,14 @@ async def get_floor_plans(db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Failed to get floor plans: {str(e)}")
 
 
-@router.get("/floor-plans/{floor_plan_id}", response_model=FloorPlanResponse)
-async def get_floor_plan(floor_plan_id: str, db: AsyncSession = Depends(get_db)):
-    """Get detailed floor plan information."""
-    try:
-        stmt = select(FloorPlan).filter(FloorPlan.id == floor_plan_id)
-        result = await db.execute(stmt)
-        floor_plan = result.scalar_one_or_none()
-
-        if not floor_plan:
-            raise HTTPException(status_code=404, detail="Floor plan not found")
-
-        return FloorPlanResponse(**floor_plan.to_dict())
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting floor plan {floor_plan_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get floor plan: {str(e)}")
-
-
-@router.post("/floor-plans/{floor_plan_id}/activate")
-async def activate_floor_plan(floor_plan_id: str, assistant_id: str = "default", db: AsyncSession = Depends(get_db)):
-    """Activate a floor plan and move assistant to default position."""
-    try:
-        from app.services.template_loader import template_loader_service
-
-        result = template_loader_service.activate_template(db, floor_plan_id, assistant_id)
-
-        if not result["success"]:
-            raise HTTPException(status_code=400, detail=result["error"])
-
-        return result
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error activating floor plan {floor_plan_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to activate floor plan: {str(e)}")
-
-
 @router.get("/floor-plans/active")
 async def get_active_floor_plan(db: AsyncSession = Depends(get_db)):
     """Get the currently active floor plan."""
     try:
-        stmt = select(FloorPlan).filter(FloorPlan.is_active == True)
+        from sqlalchemy.orm import selectinload
+
+        # Explicitly load the rooms relationship to avoid lazy loading issues
+        stmt = select(FloorPlan).options(selectinload(FloorPlan.rooms)).filter(FloorPlan.is_active == True)
         result = await db.execute(stmt)
         active_floor_plan = result.scalar_one_or_none()
 
@@ -317,6 +283,54 @@ async def get_active_floor_plan(db: AsyncSession = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error getting active floor plan: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get active floor plan: {str(e)}")
+
+
+@router.get("/floor-plans/{floor_plan_id}", response_model=FloorPlanResponse)
+async def get_floor_plan(floor_plan_id: str, db: AsyncSession = Depends(get_db)):
+    """Get detailed floor plan information."""
+    try:
+        from sqlalchemy.orm import selectinload
+
+        # Explicitly load all relationships to avoid lazy loading issues
+        stmt = select(FloorPlan).options(
+            selectinload(FloorPlan.rooms),
+            selectinload(FloorPlan.walls),
+            selectinload(FloorPlan.doorways),
+            selectinload(FloorPlan.furniture)
+        ).filter(FloorPlan.id == floor_plan_id)
+        result = await db.execute(stmt)
+        floor_plan = result.scalar_one_or_none()
+
+        if not floor_plan:
+            raise HTTPException(status_code=404, detail="Floor plan not found")
+
+        return FloorPlanResponse(**floor_plan.to_dict())
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting floor plan {floor_plan_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get floor plan: {str(e)}")
+
+
+@router.post("/floor-plans/{floor_plan_id}/activate")
+async def activate_floor_plan(floor_plan_id: str, assistant_id: str = "default", db: AsyncSession = Depends(get_db)):
+    """Activate a floor plan and move assistant to default position."""
+    try:
+        from app.services.template_loader import template_loader_service
+
+        result = await template_loader_service.activate_template(db, floor_plan_id, assistant_id)
+
+        if not result["success"]:
+            raise HTTPException(status_code=400, detail=result["error"])
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error activating floor plan {floor_plan_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to activate floor plan: {str(e)}")
 
 
 @router.post("/templates/validate")

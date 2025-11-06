@@ -10,7 +10,8 @@ import json
 import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.models.rooms import FloorPlan, Room, Wall, Doorway, FurnitureItem
@@ -22,7 +23,12 @@ logger = logging.getLogger(__name__)
 class TemplateLoaderService:
     """Service for loading and managing floor plan templates."""
 
-    def __init__(self, templates_directory: str = "/Users/christophervance/deskmate/templates/floor_plans"):
+    def __init__(self, templates_directory: str = None):
+        if templates_directory is None:
+            # Use relative path that works in both development and Docker
+            import os
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+            templates_directory = os.path.join(base_dir, "templates", "floor_plans")
         self.templates_directory = Path(templates_directory)
         self.supported_extensions = ['.json']
 
@@ -101,7 +107,7 @@ class TemplateLoaderService:
             logger.error(f"Error loading template from {file_path}: {e}")
             return None
 
-    def load_template_to_database(self, db: Session, template_data: Dict[str, Any]) -> bool:
+    async def load_template_to_database(self, db: AsyncSession, template_data: Dict[str, Any]) -> bool:
         """
         Load template data into database, creating all related objects.
 
@@ -114,7 +120,9 @@ class TemplateLoaderService:
         """
         try:
             # Check if template already exists
-            existing = db.query(FloorPlan).filter(FloorPlan.id == template_data["id"]).first()
+            stmt = select(FloorPlan).filter(FloorPlan.id == template_data["id"])
+            result = await db.execute(stmt)
+            existing = result.scalar_one_or_none()
             if existing:
                 logger.info(f"Template {template_data['id']} already exists, skipping")
                 return True
@@ -154,7 +162,7 @@ class TemplateLoaderService:
                     floor_material=room_data["properties"]["floor_material"],
                     lighting_level=room_data["properties"]["lighting_level"],
                     temperature=room_data["properties"]["temperature"],
-                    is_accessible=room_data["accessibility"]["is_accessible"]
+                    is_accessible=room_data.get("accessibility", {}).get("is_accessible", True)
                 )
                 db.add(room)
 
@@ -191,8 +199,8 @@ class TemplateLoaderService:
                     doorway_type=doorway_data["properties"]["type"],
                     has_door=doorway_data["properties"].get("has_door", False),
                     door_state=doorway_data["properties"].get("door_state", "open"),
-                    is_accessible=doorway_data["accessibility"]["is_accessible"],
-                    requires_interaction=doorway_data["accessibility"]["requires_interaction"]
+                    is_accessible=doorway_data.get("accessibility", {}).get("is_accessible", True),
+                    requires_interaction=doorway_data.get("accessibility", {}).get("requires_interaction", False)
                 )
                 db.add(doorway)
 
@@ -214,26 +222,25 @@ class TemplateLoaderService:
                     is_solid=furniture_data["properties"]["solid"],
                     is_interactive=furniture_data["properties"]["interactive"],
                     is_movable=furniture_data["properties"].get("movable", False),
-                    visual_color=furniture_data["visual"]["color"],
-                    visual_material=furniture_data["visual"]["material"],
-                    visual_style=furniture_data["visual"]["style"],
+                    color_scheme=furniture_data["visual"]["color"],
+                    material=furniture_data["visual"]["material"],
+                    style=furniture_data["visual"]["style"],
                     can_sit_on=furniture_data["functional"]["can_sit_on"],
                     can_place_items_on=furniture_data["functional"]["can_place_items_on"],
-                    storage_capacity=furniture_data["functional"]["storage_capacity"],
-                    requires_power=furniture_data["functional"].get("requires_power", False)
+                    storage_capacity=furniture_data["functional"]["storage_capacity"]
                 )
                 db.add(furniture)
 
-            db.commit()
+            await db.commit()
             logger.info(f"Successfully loaded template {template_data['id']} to database")
             return True
 
         except Exception as e:
             logger.error(f"Error loading template to database: {e}")
-            db.rollback()
+            await db.rollback()
             return False
 
-    def load_all_templates(self, db: Session) -> Dict[str, bool]:
+    async def load_all_templates(self, db: AsyncSession) -> Dict[str, bool]:
         """
         Load all discovered templates to database.
 
@@ -250,7 +257,7 @@ class TemplateLoaderService:
             try:
                 template_data = self.load_template_from_file(template_info["file_path"])
                 if template_data:
-                    success = self.load_template_to_database(db, template_data)
+                    success = await self.load_template_to_database(db, template_data)
                     results[template_data["id"]] = success
                 else:
                     results[template_info["id"]] = False
@@ -260,14 +267,16 @@ class TemplateLoaderService:
 
         return results
 
-    def get_template_by_id(self, db: Session, template_id: str) -> Optional[FloorPlan]:
+    async def get_template_by_id(self, db: AsyncSession, template_id: str) -> Optional[FloorPlan]:
         """Get template floor plan by ID."""
-        return db.query(FloorPlan).filter(
+        stmt = select(FloorPlan).filter(
             FloorPlan.id == template_id,
             FloorPlan.is_template == True
-        ).first()
+        )
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
 
-    def activate_template(self, db: Session, template_id: str, assistant_id: str = "default") -> Dict[str, Any]:
+    async def activate_template(self, db: AsyncSession, template_id: str, assistant_id: str = "default") -> Dict[str, Any]:
         """
         Activate a template as the current floor plan and position assistant.
 
@@ -281,23 +290,31 @@ class TemplateLoaderService:
         """
         try:
             # Get template
-            template = self.get_template_by_id(db, template_id)
+            template = await self.get_template_by_id(db, template_id)
             if not template:
                 return {"success": False, "error": f"Template {template_id} not found"}
 
             # Deactivate all current floor plans
-            db.query(FloorPlan).update({"is_active": False})
+            stmt = select(FloorPlan)
+            result = await db.execute(stmt)
+            floor_plans = result.scalars().all()
+            for fp in floor_plans:
+                fp.is_active = False
 
             # Activate template
             template.is_active = True
 
             # Get first room for default positioning
-            first_room = db.query(Room).filter(Room.floor_plan_id == template_id).first()
+            stmt = select(Room).filter(Room.floor_plan_id == template_id).limit(1)
+            result = await db.execute(stmt)
+            first_room = result.scalar_one_or_none()
             if not first_room:
                 return {"success": False, "error": f"Template {template_id} has no rooms"}
 
             # Get or create assistant
-            assistant = db.query(AssistantState).filter(AssistantState.id == assistant_id).first()
+            stmt = select(AssistantState).filter(AssistantState.id == assistant_id)
+            result = await db.execute(stmt)
+            assistant = result.scalar_one_or_none()
             if not assistant:
                 assistant = AssistantState(id=assistant_id)
                 db.add(assistant)
@@ -316,7 +333,7 @@ class TemplateLoaderService:
             assistant.target_room_id = None
             assistant.movement_path = None
 
-            db.commit()
+            await db.commit()
 
             return {
                 "success": True,
@@ -329,7 +346,7 @@ class TemplateLoaderService:
 
         except Exception as e:
             logger.error(f"Error activating template {template_id}: {e}")
-            db.rollback()
+            await db.rollback()
             return {"success": False, "error": str(e)}
 
     def validate_template_data(self, template_data: Dict[str, Any]) -> List[str]:

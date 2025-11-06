@@ -31,6 +31,7 @@ export const FloorPlanContainer: React.FC<FloorPlanContainerProps> = ({
   const { sendAssistantMove, isConnected } = useChatStore();
   const {
     currentFloorPlan,
+    selectedFloorPlanId,
     assistant,
     selectedObjectId,
     isLoading,
@@ -84,42 +85,65 @@ export const FloorPlanContainer: React.FC<FloorPlanContainerProps> = ({
     };
   };
 
-  // Load floor plan data
+  // Load floor plan data on mount
   useEffect(() => {
     loadFloorPlanData();
   }, []);
 
-  const loadFloorPlanData = async () => {
-    if (currentFloorPlan) return; // Already have a floor plan
+  // Reload floor plan data when selectedFloorPlanId changes (from FloorPlanSelector)
+  useEffect(() => {
+    if (selectedFloorPlanId && (!currentFloorPlan || currentFloorPlan.id !== selectedFloorPlanId)) {
+      logger.debug('Floor plan selection changed, reloading:', selectedFloorPlanId);
+      loadFloorPlanData(true); // Force reload
+    }
+  }, [selectedFloorPlanId]);
+
+  const loadFloorPlanData = async (forceReload = false) => {
+    if (currentFloorPlan && !forceReload) return; // Already have a floor plan
 
     try {
-      // Fetch floor plan from API
+      logger.debug('Loading floor plan data...');
+
+      // Fetch floor plan from correct API endpoint
       const floorPlanResponse = await fetch('/api/floor-plans/current');
 
       if (floorPlanResponse.ok) {
         const floorPlanData = await floorPlanResponse.json();
+        logger.debug('Loaded floor plan data:', floorPlanData);
         setCurrentFloorPlan(floorPlanData);
       } else if (floorPlanResponse.status === 404) {
+        logger.debug('No floor plan found, creating default');
         // No floor plan exists yet, use default
         const defaultFloorPlan = await createDefaultFloorPlan();
         setCurrentFloorPlan(defaultFloorPlan);
       } else {
-        throw new Error('Failed to load floor plan');
+        throw new Error(`Failed to load floor plan: ${floorPlanResponse.statusText}`);
       }
 
       // Load assistant state from API
       const assistantResponse = await fetch('/api/assistant/state');
       if (assistantResponse.ok) {
         const assistantData = await assistantResponse.json();
-        // Update assistant state through the store
+        logger.debug('Loaded assistant data:', assistantData);
+        // Update assistant state through the store - correct data structure
         updateAssistantPosition({
           x: assistantData.position.x,
           y: assistantData.position.y
         });
+      } else {
+        logger.warn('Failed to load assistant state, using default');
       }
 
     } catch (err) {
       logger.error('Failed to load floor plan:', err);
+      // Try to create a default floor plan as fallback
+      try {
+        const defaultFloorPlan = await createDefaultFloorPlan();
+        setCurrentFloorPlan(defaultFloorPlan);
+        logger.info('Created fallback default floor plan');
+      } catch (fallbackErr) {
+        logger.error('Failed to create fallback floor plan:', fallbackErr);
+      }
     }
   };
 
@@ -217,7 +241,7 @@ export const FloorPlanContainer: React.FC<FloorPlanContainerProps> = ({
           <h3 className="text-lg font-semibold text-red-800 mb-2">Floor Plan Error</h3>
           <p className="text-red-600 mb-4">{error}</p>
           <button
-            onClick={loadFloorPlanData}
+            onClick={() => loadFloorPlanData(true)}
             className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
           >
             Retry

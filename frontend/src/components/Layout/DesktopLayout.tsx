@@ -15,6 +15,7 @@ import DebugPanel from '../Debug/DebugPanel';
 
 // Phase 12B Components
 const FloorPlanContainer = React.lazy(() => import('../FloorPlan/FloorPlanContainer'));
+const FloorPlanSelector = React.lazy(() => import('../FloorPlan/FloorPlanSelector'));
 const ChatContainer = React.lazy(() => import('../Chat/ChatContainer'));
 const AssistantSelector = React.lazy(() => import('../AssistantSelection/AssistantSelector'));
 const StorageCloset = React.lazy(() => import('../StorageCloset'));
@@ -120,24 +121,34 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({ children }) => {
           {/* Floor Plan Options Dropdown */}
           {showFloorPlanOptions && (
             <div className="mb-3 p-3 bg-gray-50 rounded-lg border">
-              <div className="text-sm font-medium text-gray-700 mb-2">Available Floor Plans</div>
-              <div className="space-y-1">
-                <button className="w-full text-left px-3 py-2 text-sm bg-white rounded border hover:bg-gray-50">
-                  🏠 Studio Apartment
-                </button>
-                <button className="w-full text-left px-3 py-2 text-sm bg-white rounded border hover:bg-gray-50">
-                  🏡 Modern House
-                </button>
-                <button className="w-full text-left px-3 py-2 text-sm bg-white rounded border hover:bg-gray-50">
-                  🏢 Office Space
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm font-medium text-gray-700">Available Floor Plans</div>
+                <button
+                  onClick={() => setShowFloorPlanOptions(false)}
+                  className="text-xs text-gray-500 hover:text-gray-700"
+                >
+                  ✕
                 </button>
               </div>
-              <button
-                onClick={() => setShowFloorPlanOptions(false)}
-                className="mt-2 text-xs text-gray-500 hover:text-gray-700"
+              <React.Suspense
+                fallback={
+                  <div className="flex items-center justify-center py-4">
+                    <div className="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                    <span className="ml-2 text-sm text-gray-600">Loading floor plans...</span>
+                  </div>
+                }
               >
-                Close
-              </button>
+                <FloorPlanSelector
+                  onFloorPlanSelected={(floorPlan) => {
+                    console.log('Floor plan selected:', floorPlan);
+                  }}
+                  onFloorPlanActivated={(floorPlan) => {
+                    console.log('Floor plan activated:', floorPlan);
+                    setShowFloorPlanOptions(false);
+                  }}
+                  className="max-h-96 overflow-y-auto"
+                />
+              </React.Suspense>
             </div>
           )}
 

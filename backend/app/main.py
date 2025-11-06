@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import health, personas, room, assistant, chat, websocket, conversation, brain_council, room_navigation
+from app.api import health, personas, room, assistant, chat, websocket, conversation, brain_council, room_navigation, frontend
 from app.config import config
 from app.db.database import init_db
 from app.middleware import RateLimitMiddleware
@@ -58,4 +58,5 @@ app.include_router(chat.router)
 app.include_router(conversation.router, prefix="/conversation", tags=["conversation"])
 app.include_router(brain_council.router)
 app.include_router(room_navigation.router)
+app.include_router(frontend.router)
 app.include_router(websocket.router)

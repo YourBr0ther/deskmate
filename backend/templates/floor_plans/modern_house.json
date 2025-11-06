@@ -1,0 +1,768 @@
+{
+  "id": "modern_house",
+  "name": "Modern House",
+  "description": "Contemporary single-story house with open floor plan and multiple rooms",
+  "category": "house",
+  "dimensions": {
+    "width": 1600,
+    "height": 1000,
+    "scale": 20,
+    "units": "feet"
+  },
+  "styling": {
+    "background_color": "#f7f7f7",
+    "wall_color": "#444444",
+    "wall_thickness": 10
+  },
+  "rooms": [
+    {
+      "id": "entry_foyer",
+      "name": "Entry Foyer",
+      "type": "hallway",
+      "bounds": {
+        "x": 50,
+        "y": 400,
+        "width": 150,
+        "height": 200
+      },
+      "properties": {
+        "floor_color": "#F5F5F5",
+        "floor_material": "tile",
+        "lighting_level": 0.8,
+        "temperature": 72.0
+      }
+    },
+    {
+      "id": "living_room",
+      "name": "Living Room",
+      "type": "living_room",
+      "bounds": {
+        "x": 250,
+        "y": 300,
+        "width": 500,
+        "height": 400
+      },
+      "properties": {
+        "floor_color": "#F9F9F9",
+        "floor_material": "hardwood",
+        "lighting_level": 0.8,
+        "temperature": 72.0
+      }
+    },
+    {
+      "id": "kitchen",
+      "name": "Kitchen",
+      "type": "kitchen",
+      "bounds": {
+        "x": 800,
+        "y": 300,
+        "width": 350,
+        "height": 300
+      },
+      "properties": {
+        "floor_color": "#FAFAFA",
+        "floor_material": "tile",
+        "lighting_level": 0.9,
+        "temperature": 74.0
+      }
+    },
+    {
+      "id": "dining_room",
+      "name": "Dining Room",
+      "type": "dining_room",
+      "bounds": {
+        "x": 1200,
+        "y": 300,
+        "width": 300,
+        "height": 300
+      },
+      "properties": {
+        "floor_color": "#F8F8F8",
+        "floor_material": "hardwood",
+        "lighting_level": 0.85,
+        "temperature": 72.0
+      }
+    },
+    {
+      "id": "master_bedroom",
+      "name": "Master Bedroom",
+      "type": "bedroom",
+      "bounds": {
+        "x": 250,
+        "y": 50,
+        "width": 400,
+        "height": 200
+      },
+      "properties": {
+        "floor_color": "#FEF7CD",
+        "floor_material": "carpet",
+        "lighting_level": 0.6,
+        "temperature": 70.0
+      }
+    },
+    {
+      "id": "guest_bedroom",
+      "name": "Guest Bedroom",
+      "type": "bedroom",
+      "bounds": {
+        "x": 700,
+        "y": 50,
+        "width": 300,
+        "height": 200
+      },
+      "properties": {
+        "floor_color": "#E0F2FE",
+        "floor_material": "carpet",
+        "lighting_level": 0.6,
+        "temperature": 70.0
+      }
+    },
+    {
+      "id": "home_office",
+      "name": "Home Office",
+      "type": "office",
+      "bounds": {
+        "x": 1050,
+        "y": 50,
+        "width": 250,
+        "height": 200
+      },
+      "properties": {
+        "floor_color": "#F0F9FF",
+        "floor_material": "hardwood",
+        "lighting_level": 0.85,
+        "temperature": 72.0
+      }
+    },
+    {
+      "id": "master_bathroom",
+      "name": "Master Bathroom",
+      "type": "bathroom",
+      "bounds": {
+        "x": 50,
+        "y": 50,
+        "width": 150,
+        "height": 200
+      },
+      "properties": {
+        "floor_color": "#F0F9FF",
+        "floor_material": "tile",
+        "lighting_level": 0.9,
+        "temperature": 75.0
+      }
+    },
+    {
+      "id": "guest_bathroom",
+      "name": "Guest Bathroom",
+      "type": "bathroom",
+      "bounds": {
+        "x": 1350,
+        "y": 50,
+        "width": 200,
+        "height": 150
+      },
+      "properties": {
+        "floor_color": "#F0F9FF",
+        "floor_material": "tile",
+        "lighting_level": 0.9,
+        "temperature": 75.0
+      }
+    },
+    {
+      "id": "garage",
+      "name": "Garage",
+      "type": "closet",
+      "bounds": {
+        "x": 50,
+        "y": 750,
+        "width": 400,
+        "height": 200
+      },
+      "properties": {
+        "floor_color": "#E5E5E5",
+        "floor_material": "concrete",
+        "lighting_level": 0.7,
+        "temperature": 68.0
+      }
+    },
+    {
+      "id": "laundry_room",
+      "name": "Laundry Room",
+      "type": "closet",
+      "bounds": {
+        "x": 500,
+        "y": 750,
+        "width": 200,
+        "height": 150
+      },
+      "properties": {
+        "floor_color": "#F5F5F5",
+        "floor_material": "tile",
+        "lighting_level": 0.8,
+        "temperature": 72.0
+      }
+    }
+  ],
+  "walls": [
+    {
+      "id": "wall_exterior_north",
+      "geometry": {
+        "start": { "x": 50, "y": 50 },
+        "end": { "x": 1550, "y": 50 }
+      },
+      "properties": {
+        "type": "exterior",
+        "thickness": 10,
+        "material": "brick",
+        "color": "#444444"
+      }
+    },
+    {
+      "id": "wall_exterior_east",
+      "geometry": {
+        "start": { "x": 1550, "y": 50 },
+        "end": { "x": 1550, "y": 950 }
+      },
+      "properties": {
+        "type": "exterior",
+        "thickness": 10,
+        "material": "brick",
+        "color": "#444444"
+      }
+    },
+    {
+      "id": "wall_exterior_south",
+      "geometry": {
+        "start": { "x": 1550, "y": 950 },
+        "end": { "x": 50, "y": 950 }
+      },
+      "properties": {
+        "type": "exterior",
+        "thickness": 10,
+        "material": "brick",
+        "color": "#444444"
+      }
+    },
+    {
+      "id": "wall_exterior_west",
+      "geometry": {
+        "start": { "x": 50, "y": 950 },
+        "end": { "x": 50, "y": 50 }
+      },
+      "properties": {
+        "type": "exterior",
+        "thickness": 10,
+        "material": "brick",
+        "color": "#444444"
+      }
+    },
+    {
+      "id": "wall_bedroom_divide",
+      "geometry": {
+        "start": { "x": 250, "y": 50 },
+        "end": { "x": 250, "y": 250 }
+      },
+      "properties": {
+        "type": "interior",
+        "thickness": 6,
+        "material": "drywall",
+        "color": "#666666"
+      }
+    },
+    {
+      "id": "wall_living_bedrooms",
+      "geometry": {
+        "start": { "x": 250, "y": 250 },
+        "end": { "x": 1300, "y": 250 }
+      },
+      "properties": {
+        "type": "interior",
+        "thickness": 6,
+        "material": "drywall",
+        "color": "#666666"
+      }
+    },
+    {
+      "id": "wall_kitchen_living",
+      "geometry": {
+        "start": { "x": 750, "y": 300 },
+        "end": { "x": 750, "y": 600 }
+      },
+      "properties": {
+        "type": "interior",
+        "thickness": 6,
+        "material": "drywall",
+        "color": "#666666"
+      }
+    },
+    {
+      "id": "wall_dining_kitchen",
+      "geometry": {
+        "start": { "x": 1150, "y": 300 },
+        "end": { "x": 1150, "y": 600 }
+      },
+      "properties": {
+        "type": "interior",
+        "thickness": 6,
+        "material": "drywall",
+        "color": "#666666"
+      }
+    },
+    {
+      "id": "wall_garage_house",
+      "geometry": {
+        "start": { "x": 450, "y": 750 },
+        "end": { "x": 450, "y": 900 }
+      },
+      "properties": {
+        "type": "interior",
+        "thickness": 8,
+        "material": "drywall",
+        "color": "#666666"
+      }
+    }
+  ],
+  "doorways": [
+    {
+      "id": "door_main_entrance",
+      "name": "Main Entrance",
+      "wall_id": "wall_exterior_west",
+      "position": {
+        "position_on_wall": 0.5,
+        "width": 90
+      },
+      "connections": {
+        "room_a": "entry_foyer",
+        "room_b": "exterior"
+      },
+      "properties": {
+        "type": "door",
+        "has_door": true,
+        "door_state": "closed"
+      }
+    },
+    {
+      "id": "door_foyer_living",
+      "name": "Foyer to Living Room",
+      "wall_id": "wall_living_bedrooms",
+      "position": {
+        "position_on_wall": 0.05,
+        "width": 80
+      },
+      "connections": {
+        "room_a": "entry_foyer",
+        "room_b": "living_room"
+      },
+      "properties": {
+        "type": "open",
+        "has_door": false
+      }
+    },
+    {
+      "id": "door_living_kitchen",
+      "name": "Living to Kitchen",
+      "wall_id": "wall_kitchen_living",
+      "position": {
+        "position_on_wall": 0.7,
+        "width": 100
+      },
+      "connections": {
+        "room_a": "living_room",
+        "room_b": "kitchen"
+      },
+      "properties": {
+        "type": "open",
+        "has_door": false
+      }
+    },
+    {
+      "id": "door_kitchen_dining",
+      "name": "Kitchen to Dining",
+      "wall_id": "wall_dining_kitchen",
+      "position": {
+        "position_on_wall": 0.5,
+        "width": 100
+      },
+      "connections": {
+        "room_a": "kitchen",
+        "room_b": "dining_room"
+      },
+      "properties": {
+        "type": "open",
+        "has_door": false
+      }
+    },
+    {
+      "id": "door_master_bedroom",
+      "name": "Master Bedroom Door",
+      "wall_id": "wall_living_bedrooms",
+      "position": {
+        "position_on_wall": 0.3,
+        "width": 80
+      },
+      "connections": {
+        "room_a": "living_room",
+        "room_b": "master_bedroom"
+      },
+      "properties": {
+        "type": "door",
+        "has_door": true,
+        "door_state": "closed"
+      }
+    },
+    {
+      "id": "door_guest_bedroom",
+      "name": "Guest Bedroom Door",
+      "wall_id": "wall_living_bedrooms",
+      "position": {
+        "position_on_wall": 0.6,
+        "width": 80
+      },
+      "connections": {
+        "room_a": "living_room",
+        "room_b": "guest_bedroom"
+      },
+      "properties": {
+        "type": "door",
+        "has_door": true,
+        "door_state": "closed"
+      }
+    },
+    {
+      "id": "door_home_office",
+      "name": "Home Office Door",
+      "wall_id": "wall_living_bedrooms",
+      "position": {
+        "position_on_wall": 0.85,
+        "width": 80
+      },
+      "connections": {
+        "room_a": "living_room",
+        "room_b": "home_office"
+      },
+      "properties": {
+        "type": "door",
+        "has_door": true,
+        "door_state": "closed"
+      }
+    }
+  ],
+  "furniture": [
+    {
+      "id": "living_sectional",
+      "name": "Large Sectional Sofa",
+      "type": "furniture",
+      "room_id": "living_room",
+      "position": {
+        "x": 400,
+        "y": 450,
+        "rotation": 0
+      },
+      "geometry": {
+        "width": 250,
+        "height": 150,
+        "shape": "L-shape"
+      },
+      "properties": {
+        "solid": true,
+        "interactive": true,
+        "movable": false
+      },
+      "visual": {
+        "color": "#8B7355",
+        "material": "fabric",
+        "style": "modern"
+      },
+      "functional": {
+        "can_sit_on": true,
+        "can_place_items_on": true,
+        "storage_capacity": 0
+      }
+    },
+    {
+      "id": "living_coffee_table",
+      "name": "Glass Coffee Table",
+      "type": "furniture",
+      "room_id": "living_room",
+      "position": {
+        "x": 500,
+        "y": 550,
+        "rotation": 0
+      },
+      "geometry": {
+        "width": 120,
+        "height": 60,
+        "shape": "rectangle"
+      },
+      "properties": {
+        "solid": true,
+        "interactive": true,
+        "movable": true
+      },
+      "visual": {
+        "color": "#E0E0E0",
+        "material": "glass",
+        "style": "modern"
+      },
+      "functional": {
+        "can_sit_on": false,
+        "can_place_items_on": true,
+        "storage_capacity": 0
+      }
+    },
+    {
+      "id": "living_tv_unit",
+      "name": "Entertainment Center",
+      "type": "furniture",
+      "room_id": "living_room",
+      "position": {
+        "x": 300,
+        "y": 320,
+        "rotation": 0
+      },
+      "geometry": {
+        "width": 200,
+        "height": 50,
+        "shape": "rectangle"
+      },
+      "properties": {
+        "solid": true,
+        "interactive": true,
+        "movable": false
+      },
+      "visual": {
+        "color": "#2F2F2F",
+        "material": "wood",
+        "style": "modern"
+      },
+      "functional": {
+        "can_sit_on": false,
+        "can_place_items_on": true,
+        "storage_capacity": 8
+      }
+    },
+    {
+      "id": "kitchen_island",
+      "name": "Kitchen Island",
+      "type": "furniture",
+      "room_id": "kitchen",
+      "position": {
+        "x": 900,
+        "y": 450,
+        "rotation": 0
+      },
+      "geometry": {
+        "width": 180,
+        "height": 80,
+        "shape": "rectangle"
+      },
+      "properties": {
+        "solid": true,
+        "interactive": true,
+        "movable": false
+      },
+      "visual": {
+        "color": "#654321",
+        "material": "wood",
+        "style": "modern"
+      },
+      "functional": {
+        "can_sit_on": false,
+        "can_place_items_on": true,
+        "storage_capacity": 12
+      }
+    },
+    {
+      "id": "kitchen_refrigerator",
+      "name": "Double Door Refrigerator",
+      "type": "appliance",
+      "room_id": "kitchen",
+      "position": {
+        "x": 1050,
+        "y": 320,
+        "rotation": 0
+      },
+      "geometry": {
+        "width": 80,
+        "height": 70,
+        "shape": "rectangle"
+      },
+      "properties": {
+        "solid": true,
+        "interactive": true,
+        "movable": false
+      },
+      "visual": {
+        "color": "#C0C0C0",
+        "material": "metal",
+        "style": "modern"
+      },
+      "functional": {
+        "can_sit_on": false,
+        "can_place_items_on": false,
+        "storage_capacity": 25
+      }
+    },
+    {
+      "id": "dining_table",
+      "name": "Dining Table",
+      "type": "furniture",
+      "room_id": "dining_room",
+      "position": {
+        "x": 1280,
+        "y": 400,
+        "rotation": 0
+      },
+      "geometry": {
+        "width": 140,
+        "height": 100,
+        "shape": "rectangle"
+      },
+      "properties": {
+        "solid": true,
+        "interactive": true,
+        "movable": true
+      },
+      "visual": {
+        "color": "#8B4513",
+        "material": "wood",
+        "style": "traditional"
+      },
+      "functional": {
+        "can_sit_on": false,
+        "can_place_items_on": true,
+        "storage_capacity": 0
+      }
+    },
+    {
+      "id": "master_bed",
+      "name": "King Size Bed",
+      "type": "furniture",
+      "room_id": "master_bedroom",
+      "position": {
+        "x": 350,
+        "y": 100,
+        "rotation": 0
+      },
+      "geometry": {
+        "width": 200,
+        "height": 140,
+        "shape": "rectangle"
+      },
+      "properties": {
+        "solid": true,
+        "interactive": true,
+        "movable": false
+      },
+      "visual": {
+        "color": "#F5F5DC",
+        "material": "fabric",
+        "style": "modern"
+      },
+      "functional": {
+        "can_sit_on": true,
+        "can_place_items_on": true,
+        "storage_capacity": 0
+      }
+    },
+    {
+      "id": "guest_bed",
+      "name": "Queen Bed",
+      "type": "furniture",
+      "room_id": "guest_bedroom",
+      "position": {
+        "x": 750,
+        "y": 100,
+        "rotation": 0
+      },
+      "geometry": {
+        "width": 160,
+        "height": 120,
+        "shape": "rectangle"
+      },
+      "properties": {
+        "solid": true,
+        "interactive": true,
+        "movable": false
+      },
+      "visual": {
+        "color": "#E6F3FF",
+        "material": "fabric",
+        "style": "modern"
+      },
+      "functional": {
+        "can_sit_on": true,
+        "can_place_items_on": true,
+        "storage_capacity": 0
+      }
+    },
+    {
+      "id": "office_desk",
+      "name": "Home Office Desk",
+      "type": "furniture",
+      "room_id": "home_office",
+      "position": {
+        "x": 1100,
+        "y": 100,
+        "rotation": 0
+      },
+      "geometry": {
+        "width": 150,
+        "height": 60,
+        "shape": "rectangle"
+      },
+      "properties": {
+        "solid": true,
+        "interactive": true,
+        "movable": false
+      },
+      "visual": {
+        "color": "#8B4513",
+        "material": "wood",
+        "style": "modern"
+      },
+      "functional": {
+        "can_sit_on": false,
+        "can_place_items_on": true,
+        "storage_capacity": 5
+      }
+    },
+    {
+      "id": "office_chair",
+      "name": "Ergonomic Office Chair",
+      "type": "furniture",
+      "room_id": "home_office",
+      "position": {
+        "x": 1175,
+        "y": 180,
+        "rotation": 180
+      },
+      "geometry": {
+        "width": 60,
+        "height": 60,
+        "shape": "circle"
+      },
+      "properties": {
+        "solid": false,
+        "interactive": true,
+        "movable": true
+      },
+      "visual": {
+        "color": "#000080",
+        "material": "fabric",
+        "style": "modern"
+      },
+      "functional": {
+        "can_sit_on": true,
+        "can_place_items_on": false,
+        "storage_capacity": 0
+      }
+    }
+  ],
+  "metadata": {
+    "created_at": "2025-11-04T00:00:00Z",
+    "created_by": "system",
+    "is_template": true,
+    "version": "1.0"
+  }
+}
