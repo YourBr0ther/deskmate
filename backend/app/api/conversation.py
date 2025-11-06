@@ -5,7 +5,8 @@ Provides endpoints for managing and inspecting conversation memory.
 """
 
 from fastapi import APIRouter, Body
-from typing import Dict, Any
+from typing import Dict, Any, List
+from pydantic import BaseModel
 import logging
 
 from app.services.conversation_memory import conversation_memory
@@ -204,4 +205,128 @@ async def initialize_conversation_with_persona(
             "conversation_id": None,
             "messages": [],
             "count": 0
+        }
+
+
+# Pydantic models for embedding endpoints
+class EmbeddingRequest(BaseModel):
+    text: str
+
+class BatchEmbeddingRequest(BaseModel):
+    texts: List[str]
+
+class SimilarityRequest(BaseModel):
+    text1: str
+    text2: str
+
+
+@router.post("/embeddings/generate")
+async def generate_embedding(request: EmbeddingRequest) -> Dict[str, Any]:
+    """Generate embedding for text using the new embedding service."""
+    try:
+        result = await embedding_service.generate_embedding_detailed(request.text)
+
+        return {
+            "status": "success",
+            "embedding": result.embedding,
+            "metadata": {
+                "provider": result.provider.value,
+                "model_name": result.model_name,
+                "tokens_used": result.tokens_used,
+                "cache_hit": result.cache_hit,
+                "embedding_dimension": len(result.embedding)
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error generating embedding: {e}")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+
+@router.post("/embeddings/batch")
+async def generate_batch_embeddings(request: BatchEmbeddingRequest) -> Dict[str, Any]:
+    """Generate embeddings for multiple texts."""
+    try:
+        embeddings = await embedding_service.batch_generate_embeddings(request.texts)
+
+        return {
+            "status": "success",
+            "embeddings": embeddings,
+            "count": len(embeddings),
+            "metadata": {
+                "embedding_dimension": len(embeddings[0]) if embeddings else 0
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error generating batch embeddings: {e}")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+
+@router.post("/embeddings/similarity")
+async def calculate_similarity(request: SimilarityRequest) -> Dict[str, Any]:
+    """Calculate semantic similarity between two texts."""
+    try:
+        # Generate embeddings for both texts
+        embedding1 = await embedding_service.generate_embedding(request.text1)
+        embedding2 = await embedding_service.generate_embedding(request.text2)
+
+        # Calculate similarity
+        similarity = embedding_service.calculate_similarity(embedding1, embedding2)
+
+        return {
+            "status": "success",
+            "similarity": similarity,
+            "texts": {
+                "text1": request.text1,
+                "text2": request.text2
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error calculating similarity: {e}")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+
+@router.get("/embeddings/stats")
+async def get_embedding_stats() -> Dict[str, Any]:
+    """Get comprehensive embedding service statistics."""
+    try:
+        stats = embedding_service.get_stats()
+        health = embedding_service.get_health_status()
+
+        return {
+            "status": "success",
+            "stats": stats,
+            "health": health
+        }
+    except Exception as e:
+        logger.error(f"Error getting embedding stats: {e}")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+
+@router.post("/embeddings/clear-cache")
+async def clear_embedding_cache() -> Dict[str, Any]:
+    """Clear the embedding cache."""
+    try:
+        embedding_service.clear_cache()
+
+        return {
+            "status": "success",
+            "message": "Embedding cache cleared"
+        }
+    except Exception as e:
+        logger.error(f"Error clearing embedding cache: {e}")
+        return {
+            "status": "error",
+            "error": str(e)
         }

@@ -19,6 +19,12 @@ openai==1.54.5
 httpx==0.25.2
 aiohttp==3.9.1
 
+# Embedding models (temporarily commented out for testing)
+# sentence-transformers==3.3.1
+# torch>=2.0.0,<3.0.0
+# transformers>=4.21.0
+# numpy>=1.21.0
+
 # Image processing for persona cards
 Pillow==10.1.0
 
