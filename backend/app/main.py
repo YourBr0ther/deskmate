@@ -8,27 +8,45 @@ from app.api import health, personas, room, assistant, chat, websocket, conversa
 from app.config import config
 from app.db.database import init_db
 from app.middleware import RateLimitMiddleware, ErrorHandlerMiddleware
+from app.logging_config import init_logging, PerformanceLogger
 
-logging.basicConfig(level=getattr(logging, config.log_level))
+# Initialize enhanced logging first
+init_logging()
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting DeskMate backend...")
-    await init_db()
+    logger.info("Starting DeskMate backend...", extra={
+        "operation": "startup",
+        "service": "deskmate-backend",
+        "version": config.version
+    })
+
+    with PerformanceLogger("database_initialization"):
+        await init_db()
 
     # Start idle controller for autonomous behavior
     from app.services.idle_controller import idle_controller
-    await idle_controller.start()
-    logger.info("Idle controller started")
+    with PerformanceLogger("idle_controller_startup"):
+        await idle_controller.start()
+    logger.info("Idle controller started", extra={"operation": "idle_controller_started"})
+
+    logger.info("DeskMate backend startup completed successfully", extra={
+        "operation": "startup_complete",
+        "service": "deskmate-backend"
+    })
 
     yield
 
-    # Stop idle controller
-    await idle_controller.stop()
-    logger.info("Idle controller stopped")
-    logger.info("Shutting down DeskMate backend...")
+    # Shutdown sequence
+    logger.info("Shutting down DeskMate backend...", extra={"operation": "shutdown"})
+
+    with PerformanceLogger("idle_controller_shutdown"):
+        await idle_controller.stop()
+    logger.info("Idle controller stopped", extra={"operation": "idle_controller_stopped"})
+
+    logger.info("DeskMate backend shutdown completed", extra={"operation": "shutdown_complete"})
 
 
 app = FastAPI(

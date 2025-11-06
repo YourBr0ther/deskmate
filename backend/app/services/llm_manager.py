@@ -18,6 +18,8 @@ from typing import Dict, Any, List, Optional, AsyncGenerator
 from enum import Enum
 from dataclasses import dataclass
 
+from app.exceptions import ServiceError, ErrorSeverity
+
 logger = logging.getLogger(__name__)
 
 
@@ -67,6 +69,11 @@ class LLMManager:
         self.nano_gpt_api_key = os.getenv("NANO_GPT_API_KEY")
         self.nano_gpt_base_url = "https://nano-gpt.com/api/v1"
         self.ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+        # Error handling configuration
+        self.max_retries = 3
+        self.base_retry_delay = 1.0  # seconds
+        self.timeout_seconds = 60
 
         # Available models configuration
         self.available_models = {
@@ -213,11 +220,11 @@ class LLMManager:
     ) -> LLMResponse:
         """Generate completion using Nano-GPT API."""
         if not self.nano_gpt_api_key:
-            return LLMResponse(
-                content="",
+            raise ServiceError(
+                "Nano-GPT API key not configured",
+                service="nano_gpt",
                 model=self.current_model,
-                provider=LLMProvider.NANO_GPT,
-                error="Nano-GPT API key not configured"
+                severity=ErrorSeverity.HIGH
             )
 
         # Convert messages to API format
@@ -263,29 +270,28 @@ class LLMManager:
                     else:
                         error_text = await response.text()
                         logger.error(f"Nano-GPT API error {response.status}: {error_text}")
-                        return LLMResponse(
-                            content="",
+                        raise ServiceError(
+                            f"Nano-GPT API returned status {response.status}: {error_text}",
+                            service="nano_gpt",
                             model=self.current_model,
-                            provider=LLMProvider.NANO_GPT,
-                            error=f"API error: {response.status}"
+                            details={"status_code": response.status, "response_text": error_text}
                         )
 
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as e:
             logger.error("Nano-GPT API timeout")
-            return LLMResponse(
-                content="",
+            raise ServiceError(
+                "Request to Nano-GPT timed out",
+                service="nano_gpt",
                 model=self.current_model,
-                provider=LLMProvider.NANO_GPT,
-                error="Request timeout"
-            )
+                details={"timeout_seconds": self.timeout_seconds}
+            ) from e
         except Exception as e:
             logger.error(f"Nano-GPT API error: {e}")
-            return LLMResponse(
-                content="",
-                model=self.current_model,
-                provider=LLMProvider.NANO_GPT,
-                error=str(e)
-            )
+            raise ServiceError(
+                f"Nano-GPT API error: {str(e)}",
+                service="nano_gpt",
+                model=self.current_model
+            ) from e
 
     async def _nano_gpt_stream(
         self,
@@ -395,21 +401,20 @@ class LLMManager:
                     else:
                         error_text = await response.text()
                         logger.error(f"Ollama API error {response.status}: {error_text}")
-                        return LLMResponse(
-                            content="",
+                        raise ServiceError(
+                            f"Ollama API returned status {response.status}: {error_text}",
+                            service="ollama",
                             model=self.current_model,
-                            provider=LLMProvider.OLLAMA,
-                            error=f"API error: {response.status}"
+                            details={"status_code": response.status, "response_text": error_text}
                         )
 
         except Exception as e:
             logger.error(f"Ollama API error: {e}")
-            return LLMResponse(
-                content="",
-                model=self.current_model,
-                provider=LLMProvider.OLLAMA,
-                error=str(e)
-            )
+            raise ServiceError(
+                f"Ollama API error: {str(e)}",
+                service="ollama",
+                model=self.current_model
+            ) from e
 
     async def _ollama_stream(
         self,

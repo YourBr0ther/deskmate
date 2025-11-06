@@ -24,8 +24,8 @@ from app.services.room_service import room_service
 from app.services.llm_manager import llm_manager, ChatMessage
 from app.services.conversation_memory import conversation_memory
 from app.exceptions import (
-    BrainCouncilError, DatabaseError, AIServiceError,
-    ValidationError, wrap_exception
+    BusinessLogicError, ResourceError, ServiceError,
+    ValidationError, create_error_from_exception, ErrorSeverity
 )
 
 logger = logging.getLogger(__name__)
@@ -99,6 +99,23 @@ class CoordinateSystem:
 class BrainCouncil:
     """Multi-perspective AI reasoning system for contextual responses."""
 
+    def _get_fallback_context(self) -> Dict[str, Any]:
+        """Return fallback context when database operations fail."""
+        return {
+            "assistant": {
+                "position": {"x": 650, "y": 300},  # Center of typical floor plan
+                "facing": "right",
+                "action": "idle",
+                "mood": "neutral",
+                "holding_object_id": None
+            },
+            "room": {
+                "objects": [],
+                "object_states": {},
+                "timestamp": datetime.now().isoformat()
+            }
+        }
+
     async def process_user_message(
         self,
         user_message: str,
@@ -148,44 +165,43 @@ class BrainCouncil:
 
             return decision
 
-        except BrainCouncilError as e:
-            logger.error(f"Brain Council error in process_user_message: {e.message}", extra={"error_code": e.error_code, "details": e.details})
+        except BusinessLogicError as e:
+            e.log_error({"step": "process_user_message"})
             return {
-                "response": "I'm having trouble processing that request right now.",
+                "response": e.user_message,
                 "actions": [],
                 "mood": "confused",
                 "reasoning": f"Processing error: {e.message}"
             }
-        except AIServiceError as e:
-            logger.error(f"AI service error in process_user_message: {e.message}", extra={"error_code": e.error_code, "details": e.details})
+        except ServiceError as e:
+            e.log_error({"step": "process_user_message"})
             return {
-                "response": "I'm experiencing technical difficulties with my AI systems.",
+                "response": e.user_message,
                 "actions": [],
                 "mood": "confused",
                 "reasoning": f"AI service error: {e.message}"
             }
-        except DatabaseError as e:
-            logger.error(f"Database error in process_user_message: {e.message}", extra={"error_code": e.error_code, "details": e.details})
+        except ResourceError as e:
+            e.log_error({"step": "process_user_message"})
             return {
-                "response": "I'm having trouble accessing my memory right now.",
+                "response": e.user_message,
                 "actions": [],
                 "mood": "confused",
                 "reasoning": f"Memory error: {e.message}"
             }
         except Exception as e:
-            # Wrap unknown exceptions for better error tracking
-            wrapped_exception = wrap_exception(e, {
+            # Convert unknown exceptions to proper DeskMate errors
+            error = create_error_from_exception(e, {
                 "step": "process_user_message",
                 "user_message_length": len(user_message) if user_message else 0
             })
-            logger.error(f"Unexpected error in Brain Council process_user_message: {wrapped_exception.message}",
-                        extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details},
-                        exc_info=True)
+            error.severity = ErrorSeverity.HIGH
+            error.log_error()
             return {
                 "response": "I'm having trouble processing that request right now.",
                 "actions": [],
                 "mood": "confused",
-                "reasoning": f"Unexpected error: {wrapped_exception.message}"
+                "reasoning": f"Unexpected error: {error.message}"
             }
 
     async def _gather_context(self) -> Dict[str, Any]:
@@ -232,36 +248,16 @@ class BrainCouncil:
                     "timestamp": datetime.now().isoformat()
                 }
             }
-        except DatabaseError as e:
-            logger.error(f"Database error gathering context: {e.message}", extra={"error_code": e.error_code, "details": e.details})
+        except ResourceError as e:
+            e.log_error({"step": "gather_context"})
             # Return fallback with sensible default position for open-plan system
-            return {
-                "assistant": {
-                    "position": {"x": 650, "y": 300},  # Center of typical floor plan
-                    "facing": "right",
-                    "action": "idle",
-                    "mood": "neutral",
-                    "holding_object_id": None
-                },
-                "room": {"objects": [], "object_states": {}, "timestamp": datetime.now().isoformat()}
-            }
+            return self._get_fallback_context()
         except Exception as e:
-            # Wrap unknown exceptions for better error tracking
-            wrapped_exception = wrap_exception(e, {"step": "gather_context"})
-            logger.error(f"Unexpected error gathering context: {wrapped_exception.message}",
-                        extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details},
-                        exc_info=True)
+            # Convert unknown exceptions to proper DeskMate errors
+            error = create_error_from_exception(e, {"step": "gather_context"})
+            error.log_error()
             # Return fallback with sensible default position for open-plan system
-            return {
-                "assistant": {
-                    "position": {"x": 650, "y": 300},  # Center of typical floor plan
-                    "facing": "right",
-                    "action": "idle",
-                    "mood": "neutral",
-                    "holding_object_id": None
-                },
-                "room": {"objects": [], "object_states": {}, "timestamp": datetime.now().isoformat()}
-            }
+            return self._get_fallback_context()
 
     async def _build_council_prompt(
         self,
@@ -311,23 +307,21 @@ Creator: {persona_context.get('creator', 'Unknown')}
 
                     visible_objects.append(f"- {obj['name']} ({obj['id']}) at ({obj_x}, {obj_y}) - {state_desc}{movable_desc}")
             except KeyError as e:
-                # Wrap KeyError as ValidationError for better error tracking
+                # Create validation error for missing required fields
                 validation_error = ValidationError(
-                    f"Invalid object structure for object {obj.get('id', 'unknown')}: missing required field {str(e)}",
-                    details={"object_structure": obj, "missing_field": str(e)}
+                    f"Missing required field: {str(e)}",
+                    field=str(e),
+                    details={"object_id": obj.get('id', 'unknown'), "object_structure": obj}
                 )
-                logger.error(f"Object validation error: {validation_error.message}",
-                           extra={"error_code": validation_error.error_code, "details": validation_error.details})
+                validation_error.log_error({"step": "object_processing"})
                 continue
             except Exception as e:
-                # Wrap unknown exceptions for better error tracking
-                wrapped_exception = wrap_exception(e, {
+                # Convert unknown exceptions to proper DeskMate errors
+                error = create_error_from_exception(e, {
                     "step": "object_processing",
-                    "object_id": obj.get('id', 'unknown'),
-                    "object_structure": obj
+                    "object_id": obj.get('id', 'unknown')
                 })
-                logger.error(f"Error processing object {obj.get('id', 'unknown')}: {wrapped_exception.message}",
-                           extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details})
+                error.log_error()
                 continue
 
         prompt = f"""
@@ -436,15 +430,13 @@ The Memory Keeper has access to {retrieved_count} relevant past messages and {co
 
             logger.info(f"Brain Council raw LLM response: {response[:200]}...")
             return response.strip()
-        except AIServiceError as e:
-            logger.error(f"AI service error querying council: {e.message}", extra={"error_code": e.error_code, "details": e.details})
+        except ServiceError as e:
+            e.log_error({"step": "query_council"})
             return '{"response": "I\'m experiencing technical difficulties with my AI systems.", "actions": [], "mood": "confused", "reasoning": "AI service error"}'
         except Exception as e:
-            # Wrap unknown exceptions for better error tracking
-            wrapped_exception = wrap_exception(e, {"step": "query_council"})
-            logger.error(f"Unexpected error querying council: {wrapped_exception.message}",
-                        extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details},
-                        exc_info=True)
+            # Convert unknown exceptions to proper DeskMate errors
+            error = create_error_from_exception(e, {"step": "query_council"})
+            error.log_error()
             return '{"response": "I\'m having trouble processing that request right now.", "actions": [], "mood": "confused", "reasoning": "System error"}'
 
     async def _parse_council_response(self, response: str) -> Dict[str, Any]:
@@ -526,23 +518,21 @@ The Memory Keeper has access to {retrieved_count} relevant past messages and {co
 
             return decision
 
-        except BrainCouncilError as e:
-            logger.error(f"Brain Council error in idle reasoning: {e.message}", extra={"error_code": e.error_code, "details": e.details})
+        except BusinessLogicError as e:
+            e.log_error({"step": "idle_reasoning"})
             return {
                 "response": "Continuing to rest and observe the room.",
                 "actions": [{"type": "rest", "target": None, "parameters": {}}],
                 "reasoning": f"Idle reasoning error: {e.message}"
             }
         except Exception as e:
-            # Wrap unknown exceptions for better error tracking
-            wrapped_exception = wrap_exception(e, {"step": "idle_reasoning"})
-            logger.error(f"Unexpected error in idle reasoning: {wrapped_exception.message}",
-                        extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details},
-                        exc_info=True)
+            # Convert unknown exceptions to proper DeskMate errors
+            error = create_error_from_exception(e, {"step": "idle_reasoning"})
+            error.log_error()
             return {
                 "response": "Continuing to rest and observe the room.",
                 "actions": [{"type": "rest", "target": None, "parameters": {}}],
-                "reasoning": f"Unexpected error: {wrapped_exception.message}"
+                "reasoning": f"Unexpected error: {error.message}"
             }
 
     def _build_idle_prompt(self, context: Dict[str, Any]) -> str:
@@ -621,15 +611,13 @@ Respond in JSON format:
             logger.info(f"Idle Council raw response: {response[:200]}...")
             return response.strip()
 
-        except AIServiceError as e:
-            logger.error(f"AI service error querying idle council: {e.message}", extra={"error_code": e.error_code, "details": e.details})
+        except ServiceError as e:
+            e.log_error({"step": "query_idle_council"})
             return '{"response": "Observing the room quietly.", "actions": [{"type": "rest", "target": null}], "reasoning": "AI service error in idle mode"}'
         except Exception as e:
-            # Wrap unknown exceptions for better error tracking
-            wrapped_exception = wrap_exception(e, {"step": "query_idle_council"})
-            logger.error(f"Unexpected error querying idle council: {wrapped_exception.message}",
-                        extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details},
-                        exc_info=True)
+            # Convert unknown exceptions to proper DeskMate errors
+            error = create_error_from_exception(e, {"step": "query_idle_council"})
+            error.log_error()
             return '{"response": "Observing the room quietly.", "actions": [{"type": "rest", "target": null}], "reasoning": "System error in idle mode"}'
 
 

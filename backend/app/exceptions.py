@@ -1,41 +1,134 @@
-"""
-Custom exception hierarchy for DeskMate application.
+"""Simplified exception hierarchy for DeskMate application.
 
-This module defines domain-specific exceptions that provide better error context
-and enable more precise error handling throughout the application.
+This module defines a streamlined set of domain-specific exceptions that provide
+clear error context with minimal complexity.
 """
 
 from typing import Optional, Dict, Any
-import traceback
+from enum import Enum
+import logging
+
+logger = logging.getLogger(__name__)
 
 
-class DeskMateBaseException(Exception):
-    """Base exception for all DeskMate-specific errors."""
+class ErrorSeverity(Enum):
+    """Error severity levels for better error classification."""
+    LOW = "low"          # Minor issues that don't affect functionality
+    MEDIUM = "medium"    # Issues that may affect some functionality
+    HIGH = "high"        # Critical issues that affect core functionality
+    CRITICAL = "critical" # System-wide failures
+
+
+class ErrorCategory(Enum):
+    """Error categories for better error organization."""
+    VALIDATION = "validation"   # Input validation errors
+    RESOURCE = "resource"       # Database, API, external resource errors
+    BUSINESS = "business"       # Business logic errors
+    SYSTEM = "system"           # System/infrastructure errors
+    EXTERNAL = "external"       # External service errors
+
+
+class DeskMateError(Exception):
+    """Base exception for all DeskMate-specific errors.
+
+    Simplified base class that focuses on essential error information
+    without excessive nesting or wrapping.
+    """
 
     def __init__(
         self,
         message: str,
-        error_code: str,
+        category: ErrorCategory = ErrorCategory.SYSTEM,
+        severity: ErrorSeverity = ErrorSeverity.MEDIUM,
         details: Optional[Dict[str, Any]] = None,
-        original_exception: Optional[Exception] = None
+        user_message: Optional[str] = None,
+        recoverable: bool = True
     ):
         self.message = message
-        self.error_code = error_code
+        self.category = category
+        self.severity = severity
         self.details = details or {}
-        self.original_exception = original_exception
+        self.user_message = user_message or self._generate_user_friendly_message()
+        self.recoverable = recoverable
+
         super().__init__(message)
+
+    def _generate_user_friendly_message(self) -> str:
+        """Generate user-friendly error message based on category and context."""
+        if self.category == ErrorCategory.VALIDATION:
+            field = self.details.get("field")
+            if field:
+                return f"Please check your {field} and try again."
+            return "Please check your input and try again."
+        elif self.category == ErrorCategory.RESOURCE:
+            resource_type = self.details.get("resource_type", "service")
+            if self.severity == ErrorSeverity.HIGH:
+                return f"The {resource_type} is currently unavailable. Please try again later."
+            else:
+                return f"Having trouble connecting to {resource_type}. Please try again in a moment."
+        elif self.category == ErrorCategory.BUSINESS:
+            operation = self.details.get("operation", "action")
+            return f"Unable to complete {operation}. Please try a different approach or try again later."
+        elif self.category == ErrorCategory.EXTERNAL:
+            service = self.details.get("service", "external service")
+            return f"{service.replace('_', ' ').title()} is temporarily unavailable. Please try again."
+        elif self.category == ErrorCategory.SYSTEM:
+            if self.severity == ErrorSeverity.CRITICAL:
+                return "System maintenance in progress. Please contact support if this persists."
+            else:
+                return "Temporary system issue. Please try again in a moment."
+        else:
+            return "Something went wrong. Our team has been notified."
+
+    @property
+    def error_code(self) -> str:
+        """Generate consistent error code."""
+        return f"{self.category.value.upper()}_{self.severity.value.upper()}"
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert exception to dictionary for API responses."""
         return {
-            "error": self.message,
+            "message": self.message,
+            "user_message": self.user_message,
             "error_code": self.error_code,
-            "details": self.details,
-            "type": self.__class__.__name__
+            "category": self.category.value,
+            "severity": self.severity.value,
+            "recoverable": self.recoverable,
+            "details": self.details
         }
 
+    def log_error(self, context: Optional[Dict[str, Any]] = None) -> None:
+        """Log error with appropriate level based on severity and record metrics."""
+        log_context = {
+            "error_code": self.error_code,
+            "category": self.category.value,
+            "severity": self.severity.value,
+            "recoverable": self.recoverable,
+            "details": self.details
+        }
+        if context:
+            log_context.update(context)
 
-class ValidationError(DeskMateBaseException):
+        # Record error metrics
+        try:
+            from app.logging_config import log_error_metrics
+            log_error_metrics(self.category, self.severity)
+        except ImportError:
+            # Fallback if logging_config is not available
+            pass
+
+        # Log with appropriate level
+        if self.severity == ErrorSeverity.CRITICAL:
+            logger.critical(self.message, extra=log_context)
+        elif self.severity == ErrorSeverity.HIGH:
+            logger.error(self.message, extra=log_context)
+        elif self.severity == ErrorSeverity.MEDIUM:
+            logger.warning(self.message, extra=log_context)
+        else:
+            logger.info(self.message, extra=log_context)
+
+
+class ValidationError(DeskMateError):
     """Raised when input validation fails."""
 
     def __init__(
@@ -45,118 +138,109 @@ class ValidationError(DeskMateBaseException):
         value: Optional[Any] = None,
         **kwargs
     ):
-        details = kwargs.get("details", {})
+        details = kwargs.pop("details", {})
         if field:
             details["field"] = field
         if value is not None:
             details["value"] = str(value)
 
+        # Generate context-aware user message
+        user_message = None
+        if field and "password" in field.lower():
+            user_message = "Please check your password and try again."
+        elif field and "email" in field.lower():
+            user_message = "Please enter a valid email address."
+        elif field and "username" in field.lower():
+            user_message = "Please enter a valid username."
+        elif field:
+            user_message = f"Please check the {field.replace('_', ' ')} field."
+
         super().__init__(
             message=message,
-            error_code="VALIDATION_ERROR",
+            category=ErrorCategory.VALIDATION,
+            severity=ErrorSeverity.LOW,
             details=details,
-            **{k: v for k, v in kwargs.items() if k != "details"}
+            user_message=user_message,
+            **kwargs
         )
 
 
-class DatabaseError(DeskMateBaseException):
-    """Raised when database operations fail."""
+class ResourceError(DeskMateError):
+    """Raised when database or external resource operations fail."""
 
     def __init__(
         self,
         message: str,
+        resource_type: str = "database",
         operation: Optional[str] = None,
-        table: Optional[str] = None,
         **kwargs
     ):
-        details = kwargs.get("details", {})
+        details = kwargs.pop("details", {})
+        details["resource_type"] = resource_type
         if operation:
             details["operation"] = operation
-        if table:
-            details["table"] = table
+
+        # Determine if this is recoverable based on resource type
+        recoverable = resource_type not in ["critical_database", "auth_service"]
 
         super().__init__(
             message=message,
-            error_code="DATABASE_ERROR",
+            category=ErrorCategory.RESOURCE,
+            severity=ErrorSeverity.HIGH if not recoverable else ErrorSeverity.MEDIUM,
             details=details,
-            **{k: v for k, v in kwargs.items() if k != "details"}
+            recoverable=recoverable,
+            **kwargs
         )
 
 
-class AIServiceError(DeskMateBaseException):
-    """Raised when AI service operations fail."""
+class ServiceError(DeskMateError):
+    """Raised when external service operations fail."""
 
     def __init__(
         self,
         message: str,
-        service: Optional[str] = None,
+        service: str,
         model: Optional[str] = None,
         **kwargs
     ):
-        details = kwargs.get("details", {})
-        if service:
-            details["service"] = service
+        details = kwargs.pop("details", {})
+        details["service"] = service
         if model:
             details["model"] = model
 
         super().__init__(
             message=message,
-            error_code="AI_SERVICE_ERROR",
+            category=ErrorCategory.EXTERNAL,
+            severity=ErrorSeverity.MEDIUM,
             details=details,
-            **{k: v for k, v in kwargs.items() if k != "details"}
+            user_message=f"{service} service is temporarily unavailable. Please try again.",
+            **kwargs
         )
 
 
-class BrainCouncilError(AIServiceError):
-    """Raised when Brain Council processing fails."""
+class BusinessLogicError(DeskMateError):
+    """Raised when business logic validation or processing fails."""
 
     def __init__(
         self,
         message: str,
-        step: Optional[str] = None,
-        council_member: Optional[str] = None,
+        operation: str,
         **kwargs
     ):
-        details = kwargs.get("details", {})
-        if step:
-            details["step"] = step
-        if council_member:
-            details["council_member"] = council_member
+        details = kwargs.pop("details", {})
+        details["operation"] = operation
 
         super().__init__(
             message=message,
-            service="brain_council",
-            **{k: v for k, v in kwargs.items() if k != "details"},
-            details=details
-        )
-        self.error_code = "BRAIN_COUNCIL_ERROR"
-
-
-class ActionExecutionError(DeskMateBaseException):
-    """Raised when action execution fails."""
-
-    def __init__(
-        self,
-        message: str,
-        action_type: Optional[str] = None,
-        target: Optional[str] = None,
-        **kwargs
-    ):
-        details = kwargs.get("details", {})
-        if action_type:
-            details["action_type"] = action_type
-        if target:
-            details["target"] = target
-
-        super().__init__(
-            message=message,
-            error_code="ACTION_EXECUTION_ERROR",
+            category=ErrorCategory.BUSINESS,
+            severity=ErrorSeverity.MEDIUM,
             details=details,
-            **{k: v for k, v in kwargs.items() if k != "details"}
+            user_message="Unable to complete that action right now. Please try a different approach.",
+            **kwargs
         )
 
 
-class PathfindingError(ActionExecutionError):
+class PathfindingError(BusinessLogicError):
     """Raised when pathfinding operations fail."""
 
     def __init__(
@@ -166,7 +250,7 @@ class PathfindingError(ActionExecutionError):
         end_pos: Optional[tuple] = None,
         **kwargs
     ):
-        details = kwargs.get("details", {})
+        details = kwargs.pop("details", {})
         if start_pos:
             details["start_position"] = start_pos
         if end_pos:
@@ -174,14 +258,14 @@ class PathfindingError(ActionExecutionError):
 
         super().__init__(
             message=message,
-            action_type="movement",
-            **{k: v for k, v in kwargs.items() if k != "details"},
-            details=details
+            operation="pathfinding",
+            details=details,
+            user_message="Unable to move to that location. Please try a different spot.",
+            **kwargs
         )
-        self.error_code = "PATHFINDING_ERROR"
 
 
-class ObjectInteractionError(ActionExecutionError):
+class ObjectInteractionError(BusinessLogicError):
     """Raised when object interaction fails."""
 
     def __init__(
@@ -191,7 +275,7 @@ class ObjectInteractionError(ActionExecutionError):
         interaction_type: Optional[str] = None,
         **kwargs
     ):
-        details = kwargs.get("details", {})
+        details = kwargs.pop("details", {})
         if object_id:
             details["object_id"] = object_id
         if interaction_type:
@@ -199,39 +283,37 @@ class ObjectInteractionError(ActionExecutionError):
 
         super().__init__(
             message=message,
-            action_type="object_interaction",
-            target=object_id,
-            **{k: v for k, v in kwargs.items() if k != "details"},
-            details=details
+            operation="object_interaction",
+            details=details,
+            user_message="Unable to interact with that object right now.",
+            **kwargs
         )
-        self.error_code = "OBJECT_INTERACTION_ERROR"
 
 
-class WebSocketError(DeskMateBaseException):
-    """Raised when WebSocket operations fail."""
+class ConnectionError(DeskMateError):
+    """Raised when connection operations fail."""
 
     def __init__(
         self,
         message: str,
-        message_type: Optional[str] = None,
-        client_id: Optional[str] = None,
+        connection_type: str = "websocket",
         **kwargs
     ):
-        details = kwargs.get("details", {})
-        if message_type:
-            details["message_type"] = message_type
-        if client_id:
-            details["client_id"] = client_id
+        details = kwargs.pop("details", {})
+        details["connection_type"] = connection_type
 
         super().__init__(
             message=message,
-            error_code="WEBSOCKET_ERROR",
+            category=ErrorCategory.SYSTEM,
+            severity=ErrorSeverity.MEDIUM,
             details=details,
-            **{k: v for k, v in kwargs.items() if k != "details"}
+            user_message="Connection issue detected. Reconnecting...",
+            recoverable=True,
+            **kwargs
         )
 
 
-class PersonaError(DeskMateBaseException):
+class PersonaError(ResourceError):
     """Raised when persona operations fail."""
 
     def __init__(
@@ -241,93 +323,109 @@ class PersonaError(DeskMateBaseException):
         operation: Optional[str] = None,
         **kwargs
     ):
-        details = kwargs.get("details", {})
+        details = kwargs.pop("details", {})
         if persona_name:
             details["persona_name"] = persona_name
-        if operation:
-            details["operation"] = operation
 
         super().__init__(
             message=message,
-            error_code="PERSONA_ERROR",
+            resource_type="persona",
+            operation=operation,
             details=details,
-            **{k: v for k, v in kwargs.items() if k != "details"}
+            user_message="Persona not found or unable to load.",
+            **kwargs
         )
 
 
-class ConfigurationError(DeskMateBaseException):
+class ConfigurationError(DeskMateError):
     """Raised when configuration errors occur."""
 
     def __init__(
         self,
         message: str,
         config_key: Optional[str] = None,
-        config_file: Optional[str] = None,
         **kwargs
     ):
-        details = kwargs.get("details", {})
+        details = kwargs.pop("details", {})
         if config_key:
             details["config_key"] = config_key
-        if config_file:
-            details["config_file"] = config_file
 
         super().__init__(
             message=message,
-            error_code="CONFIGURATION_ERROR",
+            category=ErrorCategory.SYSTEM,
+            severity=ErrorSeverity.CRITICAL,
             details=details,
-            **{k: v for k, v in kwargs.items() if k != "details"}
+            user_message="System configuration issue detected. Please contact support.",
+            recoverable=False,
+            **kwargs
         )
 
 
-def wrap_exception(original_exception: Exception, context: Optional[Dict[str, Any]] = None) -> DeskMateBaseException:
+def create_error_from_exception(
+    original_exception: Exception,
+    context: Optional[Dict[str, Any]] = None,
+    default_category: ErrorCategory = ErrorCategory.SYSTEM
+) -> DeskMateError:
     """
-    Wrap a generic exception in an appropriate DeskMate exception.
+    Create an appropriate DeskMate error from a generic exception.
 
-    This function analyzes the original exception and context to determine
-    the most appropriate DeskMate exception type to wrap it with.
+    This is a simplified replacement for wrap_exception that creates
+    clean errors without excessive wrapping.
     """
     context = context or {}
+    error_str = str(original_exception).lower()
 
-    # Database-related exceptions
-    if any(db_term in str(original_exception).lower() for db_term in
-           ["database", "connection", "postgresql", "qdrant", "sql"]):
-        return DatabaseError(
+    # Log the original exception for debugging
+    logger.debug(f"Converting exception to DeskMateError: {original_exception}",
+                extra={"original_type": type(original_exception).__name__,
+                      "context": context})
+
+    # Database/Resource errors
+    if any(term in error_str for term in ["database", "connection", "postgresql", "qdrant", "sql"]):
+        return ResourceError(
             message=f"Database operation failed: {str(original_exception)}",
-            details=context,
-            original_exception=original_exception
+            resource_type="database",
+            details=context
         )
 
-    # AI service exceptions
-    if any(ai_term in str(original_exception).lower() for ai_term in
-           ["openai", "model", "token", "api", "llm", "embedding"]):
-        return AIServiceError(
-            message=f"AI service error: {str(original_exception)}",
-            details=context,
-            original_exception=original_exception
+    # External service errors
+    if any(term in error_str for term in ["api", "service", "timeout", "connection refused"]):
+        return ServiceError(
+            message=f"External service error: {str(original_exception)}",
+            service=context.get("service", "unknown"),
+            details=context
         )
 
-    # Validation exceptions
-    if any(val_term in str(original_exception).lower() for val_term in
-           ["validation", "invalid", "required", "missing"]):
+    # Validation errors
+    if any(term in error_str for term in ["validation", "invalid", "required", "missing"]):
         return ValidationError(
-            message=f"Validation failed: {str(original_exception)}",
-            details=context,
-            original_exception=original_exception
+            message=str(original_exception),
+            details=context
         )
 
-    # WebSocket exceptions
-    if any(ws_term in str(original_exception).lower() for ws_term in
-           ["websocket", "connection closed", "client disconnected"]):
-        return WebSocketError(
-            message=f"WebSocket error: {str(original_exception)}",
-            details=context,
-            original_exception=original_exception
+    # Connection errors
+    if any(term in error_str for term in ["websocket", "connection closed", "disconnected"]):
+        return ConnectionError(
+            message=str(original_exception),
+            details=context
         )
 
-    # Generic fallback
-    return DeskMateBaseException(
-        message=f"Unexpected error: {str(original_exception)}",
-        error_code="UNKNOWN_ERROR",
-        details=context,
-        original_exception=original_exception
+    # Generic system error - don't wrap, just convert
+    return DeskMateError(
+        message=str(original_exception),
+        category=default_category,
+        severity=ErrorSeverity.MEDIUM,
+        details=context
     )
+
+
+# Backward compatibility aliases during transition
+DeskMateBaseException = DeskMateError
+DatabaseError = ResourceError
+AIServiceError = ServiceError
+BrainCouncilError = BusinessLogicError
+ActionExecutionError = BusinessLogicError
+WebSocketError = ConnectionError
+
+# Backward compatibility alias for wrap_exception
+wrap_exception = create_error_from_exception

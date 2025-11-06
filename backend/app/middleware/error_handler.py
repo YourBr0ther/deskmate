@@ -14,7 +14,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.exceptions import DeskMateBaseException, wrap_exception
+from app.exceptions import DeskMateError, create_error_from_exception, ErrorSeverity, ErrorCategory
 
 logger = logging.getLogger(__name__)
 
@@ -37,32 +37,28 @@ class ErrorHandlerMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             return response
 
-        except DeskMateBaseException as e:
-            logger.error(
-                f"DeskMate error in {request.url.path}: {e.message}",
-                extra=logger_context | {"error_code": e.error_code, "details": e.details}
-            )
+        except DeskMateError as e:
+            # Log the error using the error's own logging method
+            e.log_error(logger_context)
             return create_error_response(e, correlation_id)
 
         except Exception as e:
-            # Wrap generic exceptions in DeskMate exceptions
+            # Convert generic exceptions to DeskMate errors
             context = {
                 "endpoint": request.url.path,
                 "method": request.method,
                 "correlation_id": correlation_id
             }
 
-            wrapped_exception = wrap_exception(e, context)
-            logger.error(
-                f"Unexpected error in {request.url.path}: {str(e)}",
-                extra=logger_context | {"original_exception": str(e)},
-                exc_info=True
-            )
-            return create_error_response(wrapped_exception, correlation_id, include_debug=True)
+            deskmate_error = create_error_from_exception(e, context)
+            # Set severity to HIGH for unexpected exceptions
+            deskmate_error.severity = ErrorSeverity.HIGH
+            deskmate_error.log_error(logger_context)
+            return create_error_response(deskmate_error, correlation_id, include_debug=True)
 
 
 def create_error_response(
-    exception: DeskMateBaseException,
+    exception: DeskMateError,
     correlation_id: str,
     include_debug: bool = False
 ) -> JSONResponse:
@@ -71,27 +67,21 @@ def create_error_response(
     # Determine HTTP status code based on exception type
     status_code = get_status_code_for_exception(exception)
 
-    # Build error response
+    # Build error response using exception's to_dict method
+    error_dict = exception.to_dict()
     error_response = {
         "status": "error",
         "timestamp": datetime.utcnow().isoformat(),
         "correlation_id": correlation_id,
-        "error": {
-            "message": exception.message,
-            "code": exception.error_code,
-            "type": exception.__class__.__name__
-        }
+        "error": error_dict
     }
 
-    # Add details if present
-    if exception.details:
-        error_response["error"]["details"] = exception.details
-
     # Add debug information in development
-    if include_debug and exception.original_exception:
+    if include_debug:
         error_response["debug"] = {
-            "original_exception": str(exception.original_exception),
-            "original_type": type(exception.original_exception).__name__
+            "severity": exception.severity.value,
+            "category": exception.category.value,
+            "recoverable": exception.recoverable
         }
 
     return JSONResponse(
@@ -100,25 +90,22 @@ def create_error_response(
     )
 
 
-def get_status_code_for_exception(exception: DeskMateBaseException) -> int:
-    """Determine appropriate HTTP status code for exception type."""
-    from app.exceptions import (
-        ValidationError, DatabaseError, AIServiceError, BrainCouncilError,
-        ActionExecutionError, WebSocketError, PersonaError, ConfigurationError
-    )
-
-    if isinstance(exception, ValidationError):
+def get_status_code_for_exception(exception: DeskMateError) -> int:
+    """Determine appropriate HTTP status code for exception category and severity."""
+    # Map error categories to HTTP status codes
+    if exception.category == ErrorCategory.VALIDATION:
         return 400  # Bad Request
-    elif isinstance(exception, (DatabaseError, AIServiceError, BrainCouncilError)):
+    elif exception.category == ErrorCategory.RESOURCE:
+        return 503 if exception.severity == ErrorSeverity.HIGH else 500
+    elif exception.category == ErrorCategory.EXTERNAL:
         return 503  # Service Unavailable
-    elif isinstance(exception, ActionExecutionError):
+    elif exception.category == ErrorCategory.BUSINESS:
         return 422  # Unprocessable Entity
-    elif isinstance(exception, WebSocketError):
-        return 400  # Bad Request
-    elif isinstance(exception, PersonaError):
-        return 404  # Not Found
-    elif isinstance(exception, ConfigurationError):
-        return 500  # Internal Server Error
+    elif exception.category == ErrorCategory.SYSTEM:
+        if exception.severity == ErrorSeverity.CRITICAL:
+            return 500  # Internal Server Error
+        else:
+            return 503  # Service Unavailable
     else:
         return 500  # Internal Server Error
 
@@ -129,25 +116,19 @@ class ErrorResponseSchema:
     @staticmethod
     def validation_error(message: str, field: str = None, value: Any = None) -> Dict[str, Any]:
         """Create validation error response."""
-        details = {}
-        if field:
-            details["field"] = field
-        if value is not None:
-            details["value"] = str(value)
+        from app.exceptions import ValidationError
 
+        error = ValidationError(message, field=field, value=value)
         return {
             "status": "error",
-            "error": {
-                "message": message,
-                "code": "VALIDATION_ERROR",
-                "type": "ValidationError",
-                "details": details
-            }
+            "error": error.to_dict()
         }
 
     @staticmethod
     def not_found_error(resource: str, identifier: str = None) -> Dict[str, Any]:
         """Create not found error response."""
+        from app.exceptions import ResourceError
+
         message = f"{resource} not found"
         if identifier:
             message += f": {identifier}"
@@ -156,30 +137,30 @@ class ErrorResponseSchema:
         if identifier:
             details["identifier"] = identifier
 
+        error = ResourceError(
+            message=message,
+            resource_type=resource,
+            operation="lookup",
+            details=details,
+            user_message=f"{resource.capitalize()} not found."
+        )
         return {
             "status": "error",
-            "error": {
-                "message": message,
-                "code": "NOT_FOUND_ERROR",
-                "type": "NotFoundError",
-                "details": details
-            }
+            "error": error.to_dict()
         }
 
     @staticmethod
     def service_unavailable_error(service: str, message: str = None) -> Dict[str, Any]:
         """Create service unavailable error response."""
+        from app.exceptions import ServiceError
+
         if not message:
             message = f"{service} is currently unavailable"
 
+        error = ServiceError(message=message, service=service)
         return {
             "status": "error",
-            "error": {
-                "message": message,
-                "code": "SERVICE_UNAVAILABLE",
-                "type": "ServiceUnavailableError",
-                "details": {"service": service}
-            }
+            "error": error.to_dict()
         }
 
     @staticmethod

@@ -13,6 +13,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 import logging
 import json
 import asyncio
+import time
 from datetime import datetime
 
 from app.config import config
@@ -24,8 +25,8 @@ from app.services.conversation_memory import conversation_memory
 from app.services.action_executor import action_executor
 from app.services.idle_controller import idle_controller
 from app.exceptions import (
-    WebSocketError, BrainCouncilError, ActionExecutionError,
-    DatabaseError, AIServiceError, wrap_exception
+    ConnectionError, BusinessLogicError, ActionExecutionError,
+    ResourceError, ServiceError, create_error_from_exception, ErrorSeverity
 )
 from app.services.dream_memory import dream_memory
 
@@ -34,11 +35,40 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+async def handle_websocket_error(
+    e: Exception,
+    websocket: WebSocket,
+    context: str,
+    error_message: str = "An error occurred"
+) -> None:
+    """Helper function to handle WebSocket errors consistently."""
+    if isinstance(e, (ResourceError, ServiceError, BusinessLogicError, ConnectionError)):
+        e.log_error({"context": context})
+        user_message = e.user_message
+    else:
+        # Convert unknown exceptions to proper DeskMate errors
+        error = create_error_from_exception(e, {"context": context})
+        error.log_error()
+        user_message = error_message
+
+    try:
+        await connection_manager.send_personal_message({
+            "type": "error",
+            "data": {"message": user_message},
+            "timestamp": datetime.now().isoformat()
+        }, websocket)
+    except Exception as send_error:
+        logger.error(f"Failed to send error message to WebSocket: {send_error}")
+
+
 class ConnectionManager:
-    """Manages WebSocket connections."""
+    """Manages WebSocket connections with improved error resilience."""
 
     def __init__(self):
         self.active_connections: Set[WebSocket] = set()
+        self.connection_health: Dict[WebSocket, Dict[str, Any]] = {}
+        self.max_failures_per_connection = 3
+        self.failure_reset_time = 300  # 5 minutes
 
     async def connect(self, websocket: WebSocket):
         """Accept new WebSocket connection."""
@@ -47,45 +77,113 @@ class ConnectionManager:
         logger.info(f"WebSocket connected. Total connections: {len(self.active_connections)}")
 
     def disconnect(self, websocket: WebSocket):
-        """Remove WebSocket connection."""
+        """Remove WebSocket connection and cleanup health tracking."""
         self.active_connections.discard(websocket)
+        self.connection_health.pop(websocket, None)
         logger.info(f"WebSocket disconnected. Total connections: {len(self.active_connections)}")
 
-    async def send_personal_message(self, message: dict, websocket: WebSocket):
-        """Send message to specific connection."""
-        try:
-            await websocket.send_text(json.dumps(message))
-        except Exception as e:
-            # Wrap as WebSocket error for better tracking
-            ws_error = WebSocketError(
-                f"Failed to send personal message: {str(e)}",
-                details={"message_type": message.get("type"), "target": "personal"},
-                original_exception=e
-            )
-            logger.error(f"WebSocket error sending personal message: {ws_error.message}",
-                        extra={"error_code": ws_error.error_code, "details": ws_error.details})
-            self.disconnect(websocket)
+    def _is_connection_unhealthy(self, websocket: WebSocket) -> bool:
+        """Check if a connection has too many recent failures."""
+        if websocket not in self.connection_health:
+            return False
 
-    async def broadcast(self, message: dict):
-        """Broadcast message to all connections."""
-        disconnected = set()
+        health = self.connection_health[websocket]
+
+        # Reset failure count if enough time has passed
+        if time.time() - health.get("last_failure", 0) > self.failure_reset_time:
+            health["failures"] = 0
+            return False
+
+        return health.get("failures", 0) >= self.max_failures_per_connection
+
+    def get_health_stats(self) -> Dict[str, Any]:
+        """Get connection health statistics."""
+        total_connections = len(self.active_connections)
+        unhealthy_connections = sum(1 for ws in self.active_connections if self._is_connection_unhealthy(ws))
+
+        return {
+            "total_connections": total_connections,
+            "healthy_connections": total_connections - unhealthy_connections,
+            "unhealthy_connections": unhealthy_connections,
+            "failure_reset_time": self.failure_reset_time,
+            "max_failures_per_connection": self.max_failures_per_connection
+        }
+
+    async def send_personal_message(self, message: dict, websocket: WebSocket, max_retries: int = 2):
+        """Send message to specific connection with retry logic."""
+        for attempt in range(max_retries + 1):
+            try:
+                await websocket.send_text(json.dumps(message))
+                # Reset failure count on successful send
+                if websocket in self.connection_health:
+                    self.connection_health[websocket]["failures"] = 0
+                return
+            except Exception as e:
+                # Track connection failures
+                if websocket not in self.connection_health:
+                    self.connection_health[websocket] = {"failures": 0, "last_failure": time.time()}
+
+                self.connection_health[websocket]["failures"] += 1
+                self.connection_health[websocket]["last_failure"] = time.time()
+
+                if attempt < max_retries:
+                    logger.warning(f"WebSocket send failed (attempt {attempt + 1}/{max_retries + 1}), retrying: {e}")
+                    await asyncio.sleep(0.1)  # Brief delay before retry
+                    continue
+                else:
+                    # Only disconnect after max retries and if too many failures
+                    failure_count = self.connection_health[websocket]["failures"]
+                    if failure_count >= self.max_failures_per_connection:
+                        logger.error(f"WebSocket connection has {failure_count} failures, disconnecting")
+                        self.disconnect(websocket)
+                    else:
+                        # Log error but don't disconnect yet
+                        error = ConnectionError(
+                            f"Failed to send personal message after {max_retries + 1} attempts: {str(e)}",
+                            connection_type="websocket",
+                            details={"message_type": message.get("type"), "attempt": attempt + 1}
+                        )
+                        error.log_error()
+                    break
+
+    async def broadcast(self, message: dict, exclude_failed: bool = True):
+        """Broadcast message to all connections with improved error handling."""
+        failed_connections = set()
+        successful_sends = 0
+
         for connection in self.active_connections.copy():
+            # Skip connections with too many recent failures if exclude_failed is True
+            if exclude_failed and self._is_connection_unhealthy(connection):
+                continue
+
             try:
                 await connection.send_text(json.dumps(message))
-            except Exception as e:
-                # Wrap as WebSocket error for better tracking
-                ws_error = WebSocketError(
-                    f"Failed to broadcast message: {str(e)}",
-                    details={"message_type": message.get("type"), "target": "broadcast"},
-                    original_exception=e
-                )
-                logger.error(f"WebSocket error broadcasting message: {ws_error.message}",
-                            extra={"error_code": ws_error.error_code, "details": ws_error.details})
-                disconnected.add(connection)
+                successful_sends += 1
 
-        # Remove failed connections
-        for connection in disconnected:
+                # Reset failure count on successful broadcast
+                if connection in self.connection_health:
+                    self.connection_health[connection]["failures"] = 0
+
+            except Exception as e:
+                # Track failure but don't immediately disconnect
+                if connection not in self.connection_health:
+                    self.connection_health[connection] = {"failures": 0, "last_failure": time.time()}
+
+                self.connection_health[connection]["failures"] += 1
+                self.connection_health[connection]["last_failure"] = time.time()
+
+                failure_count = self.connection_health[connection]["failures"]
+                if failure_count >= self.max_failures_per_connection:
+                    failed_connections.add(connection)
+                    logger.warning(f"Connection marked for removal due to {failure_count} failures")
+                else:
+                    logger.debug(f"Broadcast failed for connection (failure {failure_count}): {e}")
+
+        # Remove only consistently failed connections
+        for connection in failed_connections:
             self.disconnect(connection)
+
+        logger.debug(f"Broadcast completed: {successful_sends}/{len(self.active_connections)} successful sends")
 
 
 # Global connection manager
@@ -118,15 +216,22 @@ async def websocket_endpoint(websocket: WebSocket):
                 "data": assistant_state.to_dict(),
                 "timestamp": datetime.now().isoformat()
             }, websocket)
-        except DatabaseError as e:
-            logger.warning(f"Database error getting initial assistant state: {e.message}",
-                          extra={"error_code": e.error_code, "details": e.details})
+        except ResourceError as e:
+            e.log_error({"context": "websocket_initial_state"})
             # Send a default state
+            await connection_manager.send_personal_message({
+                "type": "assistant_state",
+                "data": {
+                    "position": {"x": 32, "y": 8},
+                    "status": {"action": "idle", "mood": "neutral"},
+                    "id": "assistant"
+                },
+                "timestamp": datetime.now().isoformat()
+            }, websocket)
         except Exception as e:
-            # Wrap unknown exceptions for better error tracking
-            wrapped_exception = wrap_exception(e, {"context": "websocket_initial_state"})
-            logger.warning(f"Unexpected error getting initial assistant state: {wrapped_exception.message}",
-                          extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details})
+            # Convert unknown exceptions to proper DeskMate errors
+            error = create_error_from_exception(e, {"context": "websocket_initial_state"})
+            error.log_error()
             # Send a default state
             await connection_manager.send_personal_message({
                 "type": "assistant_state",
@@ -202,14 +307,13 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.info("Client disconnected normally")
         connection_manager.disconnect(websocket)
     except Exception as e:
-        # Wrap unknown exceptions for better error tracking
-        wrapped_exception = wrap_exception(e, {
+        # Convert unknown exceptions to proper DeskMate errors
+        error = create_error_from_exception(e, {
             "context": "websocket_connection_handler",
             "connection_id": id(websocket)
         })
-        logger.error(f"Unexpected WebSocket error: {wrapped_exception.message}",
-                    extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details},
-                    exc_info=True)
+        error.severity = ErrorSeverity.HIGH
+        error.log_error()
         connection_manager.disconnect(websocket)
 
 
