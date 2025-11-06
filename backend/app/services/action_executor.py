@@ -435,6 +435,9 @@ class ActionExecutor:
             # Update assistant state to hold object
             assistant_state.holding_object_id = target
 
+            # Save the updated state to database
+            await assistant_service.update_assistant_state(assistant_state)
+
             # Broadcast update
             if broadcast_callback:
                 await broadcast_callback({
@@ -540,7 +543,7 @@ class ActionExecutor:
                 }
 
             # Execute the put down
-            await room_service.update_object_position(
+            await room_service.move_object(
                 assistant_state.holding_object_id,
                 target_x, target_y
             )
@@ -548,6 +551,9 @@ class ActionExecutor:
             # Clear holding state
             held_object_id = assistant_state.holding_object_id
             assistant_state.holding_object_id = None
+
+            # Save the updated state to database
+            await assistant_service.update_assistant_state(assistant_state)
 
             # Broadcast updates
             if broadcast_callback:

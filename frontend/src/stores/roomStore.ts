@@ -43,6 +43,12 @@ interface RoomStore extends RoomState {
   placeFromStorage: (itemId: string, position: Position) => Promise<boolean>;
   moveObjectToStorage: (objectId: string) => Promise<boolean>;
 
+  // Storage Placement State
+  selectedStorageItemId: string | null;
+  isStoragePlacementActive: boolean;
+  startStoragePlacement: (itemId: string) => void;
+  clearStoragePlacement: () => void;
+
   // Computed values
   getGridMap: () => GridMap;
   getGridDimensions: () => { width: number; height: number };
@@ -130,6 +136,10 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
   draggedObject: null,
   storageItems: [],
   storageVisible: false,
+
+  // Storage placement state
+  selectedStorageItemId: null,
+  isStoragePlacementActive: false,
 
   // Assistant actions
   setAssistantPosition: (position) =>
@@ -571,4 +581,17 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
       return false;
     }
   },
+
+  // Storage Placement Management
+  startStoragePlacement: (itemId) =>
+    set({
+      selectedStorageItemId: itemId,
+      isStoragePlacementActive: true
+    }),
+
+  clearStoragePlacement: () =>
+    set({
+      selectedStorageItemId: null,
+      isStoragePlacementActive: false
+    }),
 }));

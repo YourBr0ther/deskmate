@@ -10,6 +10,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useRoomNavigation, NavigationPath } from '../../hooks/useRoomNavigation';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { FloorPlan, Room, Wall, Doorway, FurnitureItem, Assistant, Position } from '../../types/floorPlan';
+import { logger } from '../../utils/logger';
 
 // Local component types
 interface Size {
@@ -31,6 +32,7 @@ interface TopDownRendererProps {
   showNavigationPath?: boolean;
   showDoorwayHighlights?: boolean;
   enableRoomNavigation?: boolean;
+  isStoragePlacementActive?: boolean;
   className?: string;
   style?: React.CSSProperties;
 }
@@ -52,6 +54,7 @@ export const TopDownRenderer: React.FC<TopDownRendererProps> = ({
   showNavigationPath = true,
   showDoorwayHighlights = true,
   enableRoomNavigation = true,
+  isStoragePlacementActive = false,
   className = '',
   style = {}
 }) => {
@@ -86,7 +89,7 @@ export const TopDownRenderer: React.FC<TopDownRendererProps> = ({
     checkDoorwayProximity
   } = useRoomNavigation({
     onRoomTransition: (fromRoom, toRoom) => {
-      console.log(`Room transition: ${fromRoom} → ${toRoom}`);
+      logger.debug(`Room transition: ${fromRoom} → ${toRoom}`);
     }
   });
 
@@ -122,17 +125,27 @@ export const TopDownRenderer: React.FC<TopDownRendererProps> = ({
 
   // Handle room click
   const handleRoomClick = useCallback((event: React.MouseEvent, roomId: string) => {
+    // In storage placement mode, all clicks should go to position handler
+    if (isStoragePlacementActive) {
+      return; // Let event bubble to SVG click handler
+    }
+
     event.stopPropagation();
     if (enableRoomNavigation) {
       onRoomClick?.(roomId);
     }
-  }, [enableRoomNavigation, onRoomClick]);
+  }, [enableRoomNavigation, onRoomClick, isStoragePlacementActive]);
 
   // Handle doorway click
   const handleDoorwayClick = useCallback((event: React.MouseEvent, doorwayId: string) => {
+    // In storage placement mode, all clicks should go to position handler
+    if (isStoragePlacementActive) {
+      return; // Let event bubble to SVG click handler
+    }
+
     event.stopPropagation();
     onDoorwayClick?.(doorwayId);
-  }, [onDoorwayClick]);
+  }, [onDoorwayClick, isStoragePlacementActive]);
 
   // Render room backgrounds
   const renderRooms = () => {
@@ -314,13 +327,18 @@ export const TopDownRenderer: React.FC<TopDownRendererProps> = ({
   const handleDragStart = useCallback((e: React.MouseEvent, item: FurnitureItem) => {
     if (!item.properties.movable) return;
 
+    // In storage placement mode, disable furniture dragging
+    if (isStoragePlacementActive) {
+      return; // Let event bubble to SVG click handler
+    }
+
     e.stopPropagation();
     setDraggedObject(item.id);
     setIsDragging(true);
     setDragStartPosition(item.position);
     setDragCurrentPosition(item.position);
-    console.log(`Started dragging ${item.name}`);
-  }, []);
+    logger.debug(`Started dragging ${item.name}`);
+  }, [isStoragePlacementActive]);
 
   // Handle drag move
   const handleDragMove = useCallback((e: React.MouseEvent) => {
@@ -359,15 +377,26 @@ export const TopDownRenderer: React.FC<TopDownRendererProps> = ({
   const handleDragEnd = useCallback((e: React.MouseEvent) => {
     if (!isDragging || !draggedObject || !dragCurrentPosition) return;
 
+    // In storage placement mode, cancel any drag operations
+    if (isStoragePlacementActive) {
+      // Reset drag state without applying changes
+      setIsDragging(false);
+      setDraggedObject(null);
+      setDragStartPosition(null);
+      setDragCurrentPosition(null);
+      setDragValid(true);
+      return;
+    }
+
     e.stopPropagation();
 
     const draggedItem = floorPlan.furniture.find(f => f.id === draggedObject);
     if (draggedItem && dragValid && onObjectMove) {
       // Update furniture position in store
       onObjectMove(draggedObject, dragCurrentPosition);
-      console.log(`Moved ${draggedItem.name} to (${dragCurrentPosition.x}, ${dragCurrentPosition.y})`);
+      logger.debug(`Moved ${draggedItem.name} to (${dragCurrentPosition.x}, ${dragCurrentPosition.y})`);
     } else {
-      console.log('Invalid position - reverting');
+      logger.debug('Invalid position - reverting');
     }
 
     // Reset drag state
@@ -376,7 +405,7 @@ export const TopDownRenderer: React.FC<TopDownRendererProps> = ({
     setDragStartPosition(null);
     setDragCurrentPosition(null);
     setDragValid(true);
-  }, [isDragging, draggedObject, dragCurrentPosition, dragValid, floorPlan, onObjectMove]);
+  }, [isDragging, draggedObject, dragCurrentPosition, dragValid, floorPlan, onObjectMove, isStoragePlacementActive]);
 
   // Render furniture
   const renderFurniture = () => {
@@ -404,6 +433,11 @@ export const TopDownRenderer: React.FC<TopDownRendererProps> = ({
           key={`furniture-${item.id}`}
           className={`furniture-group ${item.properties.movable ? 'cursor-move' : 'cursor-pointer'} ${isDragged ? 'dragging' : ''}`}
           onClick={(e) => {
+            // In storage placement mode, all clicks should go to position handler
+            if (isStoragePlacementActive) {
+              return; // Let event bubble to SVG click handler
+            }
+
             e.stopPropagation();
             if (!isDragging) {
               onObjectClick?.(item.id);

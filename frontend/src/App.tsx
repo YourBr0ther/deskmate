@@ -13,6 +13,7 @@ import { usePersonaStore } from './stores/personaStore';
 import ResponsiveLayout from './components/Layout/ResponsiveLayout';
 import SettingsPanel from './components/Settings/SettingsPanel';
 import PerformanceMonitor from './components/PerformanceMonitor';
+import ErrorBoundary from './components/ErrorBoundary';
 import { ThemeProvider } from './contexts/ThemeContext';
 import './styles/themes.css';
 
@@ -25,16 +26,24 @@ const App: React.FC = () => {
   }, [loadPersonas]);
 
   return (
-    <ThemeProvider>
-      <div className="app-container w-full h-screen overflow-hidden bg-themed-primary text-themed-primary">
-        {/* Main responsive layout system */}
-        <ResponsiveLayout />
+    <ErrorBoundary
+      onError={(error, errorInfo) => {
+        // Could send to error tracking service here
+        console.error('Application error:', error, errorInfo);
+      }}
+      resetOnPropsChange={false}
+    >
+      <ThemeProvider>
+        <div className="app-container w-full h-screen overflow-hidden bg-themed-primary text-themed-primary">
+          {/* Main responsive layout system */}
+          <ResponsiveLayout />
 
-        {/* Global overlays that work across all layouts */}
-        <SettingsPanel />
-        <PerformanceMonitor />
-      </div>
-    </ThemeProvider>
+          {/* Global overlays that work across all layouts */}
+          <SettingsPanel />
+          <PerformanceMonitor />
+        </div>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 };
 

@@ -14,11 +14,12 @@ const StorageCloset: React.FC = () => {
     loadStorageItems,
     placeFromStorage,
     moveObjectToStorage,
-    objects
+    objects,
+    selectedStorageItemId,
+    isStoragePlacementActive,
+    startStoragePlacement,
+    clearStoragePlacement
   } = useRoomStore();
-
-  const [selectedStorageItem, setSelectedStorageItem] = useState<string | null>(null);
-  const [isPlacingMode, setIsPlacingMode] = useState(false);
 
   // Load storage items when component mounts
   useEffect(() => {
@@ -28,19 +29,8 @@ const StorageCloset: React.FC = () => {
   }, [storageVisible, loadStorageItems]);
 
   const handleSelectStorageItem = (item: StorageItem) => {
-    setSelectedStorageItem(item.id);
-    setIsPlacingMode(true);
+    startStoragePlacement(item.id);
     console.log(`Selected ${item.name} for placement`);
-  };
-
-  const handlePlaceItem = async (position: Position) => {
-    if (selectedStorageItem && isPlacingMode) {
-      const success = await placeFromStorage(selectedStorageItem, position);
-      if (success) {
-        setSelectedStorageItem(null);
-        setIsPlacingMode(false);
-      }
-    }
   };
 
   const handleStoreObject = async (objectId: string) => {
@@ -63,18 +53,7 @@ const StorageCloset: React.FC = () => {
   };
 
   if (!storageVisible) {
-    // Show storage toggle button when closed
-    return (
-      <button
-        onClick={toggleStorageVisibility}
-        className="fixed bottom-4 right-4 bg-amber-600 hover:bg-amber-700 text-white p-3 rounded-lg shadow-lg transition-colors z-50"
-        title="Open Storage Closet"
-      >
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-        </svg>
-      </button>
-    );
+    return null;
   }
 
   return (
@@ -100,17 +79,14 @@ const StorageCloset: React.FC = () => {
 
       {/* Storage Items List */}
       <div className="flex-1 overflow-y-auto p-4">
-        {isPlacingMode && selectedStorageItem && (
+        {isStoragePlacementActive && selectedStorageItemId && (
           <div className="mb-4 p-3 bg-blue-900/50 border border-blue-700 rounded-lg">
             <div className="text-blue-200 text-sm font-medium">Placement Mode</div>
             <div className="text-blue-300 text-xs mt-1">
-              Click on the grid to place {storageItems.find(i => i.id === selectedStorageItem)?.name}
+              Click on the grid to place {storageItems.find(i => i.id === selectedStorageItemId)?.name}
             </div>
             <button
-              onClick={() => {
-                setIsPlacingMode(false);
-                setSelectedStorageItem(null);
-              }}
+              onClick={clearStoragePlacement}
               className="text-blue-400 hover:text-blue-300 text-xs underline mt-1"
             >
               Cancel
@@ -132,7 +108,7 @@ const StorageCloset: React.FC = () => {
               <div
                 key={item.id}
                 className={`p-3 rounded-lg border transition-colors cursor-pointer ${
-                  selectedStorageItem === item.id
+                  selectedStorageItemId === item.id
                     ? 'bg-blue-900/50 border-blue-700'
                     : 'bg-gray-700/50 border-gray-600 hover:bg-gray-600/50'
                 }`}

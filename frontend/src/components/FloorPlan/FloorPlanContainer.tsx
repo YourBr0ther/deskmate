@@ -9,9 +9,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useDeviceDetection } from '../../hooks/useDeviceDetection';
 import { useChatStore } from '../../stores/chatStore';
 import { useFloorPlanStore } from '../../stores/floorPlanStore';
+import { useRoomStore } from '../../stores/roomStore';
 import { FloorPlan, Assistant, Position } from '../../types/floorPlan';
-import { pixelToGrid } from '../../utils/coordinateConversion';
 import TopDownRenderer from './TopDownRenderer';
+import { logger } from '../../utils/logger';
 
 
 interface FloorPlanContainerProps {
@@ -40,6 +41,49 @@ export const FloorPlanContainer: React.FC<FloorPlanContainerProps> = ({
     setCurrentFloorPlan
   } = useFloorPlanStore();
 
+  // Get storage placement state
+  const {
+    placeFromStorage,
+    isStoragePlacementActive,
+    selectedStorageItemId,
+    clearStoragePlacement
+  } = useRoomStore();
+
+  // Helper function to create default floor plan
+  const createDefaultFloorPlan = async (): Promise<FloorPlan> => {
+    // Try to create a default floor plan via API
+    const response = await fetch('/api/floor-plans/create-default', {
+      method: 'POST'
+    });
+
+    if (response.ok) {
+      return await response.json();
+    }
+
+    // Fallback to basic floor plan if API fails
+    return {
+      id: 'default',
+      name: 'Default Room',
+      description: 'A simple room layout',
+      category: 'studio',
+      dimensions: {
+        width: 1920,
+        height: 480,
+        scale: 1.0,
+        units: 'pixels'
+      },
+      styling: {
+        background_color: '#F9FAFB',
+        wall_color: '#374151',
+        wall_thickness: 8
+      },
+      rooms: [],
+      walls: [],
+      doorways: [],
+      furniture: []
+    };
+  };
+
   // Load floor plan data
   useEffect(() => {
     loadFloorPlanData();
@@ -49,179 +93,69 @@ export const FloorPlanContainer: React.FC<FloorPlanContainerProps> = ({
     if (currentFloorPlan) return; // Already have a floor plan
 
     try {
+      // Fetch floor plan from API
+      const floorPlanResponse = await fetch('/api/floor-plans/current');
 
-      // For now, use mock data. In real implementation, this would fetch from API
-      const mockFloorPlan: FloorPlan = {
-        id: 'studio_apartment',
-        name: 'Studio Apartment',
-        description: 'A cozy studio apartment with modern amenities',
-        category: 'studio',
-        dimensions: {
-          width: 1300,
-          height: 600,
-          scale: 1.0,
-          units: 'pixels'
-        },
-        styling: {
-          background_color: '#F9FAFB',
-          wall_color: '#374151',
-          wall_thickness: 8
-        },
-        rooms: [
-          {
-            id: 'studio_main',
-            name: 'Studio',
-            type: 'studio',
-            bounds: { x: 50, y: 50, width: 1200, height: 500 },
-            properties: {
-              floor_color: '#F3F4F6',
-              floor_material: 'hardwood',
-              lighting_level: 0.8
-            }
-          }
-        ],
-        walls: [
-          {
-            id: 'wall_north',
-            geometry: { start: { x: 50, y: 50 }, end: { x: 1250, y: 50 } },
-            properties: { type: 'exterior', thickness: 8, material: 'drywall', color: '#374151' }
-          },
-          {
-            id: 'wall_east',
-            geometry: { start: { x: 1250, y: 50 }, end: { x: 1250, y: 550 } },
-            properties: { type: 'exterior', thickness: 8, material: 'drywall', color: '#374151' }
-          },
-          {
-            id: 'wall_south',
-            geometry: { start: { x: 1250, y: 550 }, end: { x: 50, y: 550 } },
-            properties: { type: 'exterior', thickness: 8, material: 'drywall', color: '#374151' }
-          },
-          {
-            id: 'wall_west',
-            geometry: { start: { x: 50, y: 550 }, end: { x: 50, y: 50 } },
-            properties: { type: 'exterior', thickness: 8, material: 'drywall', color: '#374151' }
-          },
-          {
-            id: 'wall_kitchen',
-            geometry: { start: { x: 200, y: 100 }, end: { x: 400, y: 100 } },
-            properties: { type: 'interior', thickness: 4, material: 'drywall', color: '#6B7280' }
-          }
-        ],
-        doorways: [
-          {
-            id: 'door_entrance',
-            wall_id: 'wall_west',
-            position: { position_on_wall: 0.7, width: 80 },
-            connections: { room_a: 'studio_main', room_b: 'hallway' },
-            properties: { type: 'door', has_door: true, door_state: 'closed' },
-            accessibility: { is_accessible: true, requires_interaction: true },
-            world_position: { x: 50, y: 400 }
-          }
-        ],
-        furniture: [
-          {
-            id: 'kitchen_counter',
-            name: 'Kitchen Counter',
-            type: 'furniture',
-            position: { x: 80, y: 120, rotation: 0 },
-            geometry: { width: 300, height: 60 },
-            visual: { color: '#8B4513', material: 'wood', style: 'modern' },
-            properties: { solid: true, interactive: true, movable: false }
-          },
-          {
-            id: 'refrigerator',
-            name: 'Refrigerator',
-            type: 'appliance',
-            position: { x: 80, y: 200, rotation: 0 },
-            geometry: { width: 60, height: 60 },
-            visual: { color: '#E5E7EB', material: 'metal', style: 'modern' },
-            properties: { solid: true, interactive: true, movable: false }
-          },
-          {
-            id: 'sofa',
-            name: 'Sofa',
-            type: 'furniture',
-            position: { x: 500, y: 300, rotation: 0 },
-            geometry: { width: 180, height: 80 },
-            visual: { color: '#6B7280', material: 'fabric', style: 'modern' },
-            properties: { solid: true, interactive: true, movable: false }
-          },
-          {
-            id: 'coffee_table',
-            name: 'Coffee Table',
-            type: 'furniture',
-            position: { x: 550, y: 400, rotation: 0 },
-            geometry: { width: 80, height: 40 },
-            visual: { color: '#92400E', material: 'wood', style: 'modern' },
-            properties: { solid: true, interactive: true, movable: true }
-          },
-          {
-            id: 'bed',
-            name: 'Bed',
-            type: 'furniture',
-            position: { x: 900, y: 350, rotation: 0 },
-            geometry: { width: 160, height: 120 },
-            visual: { color: '#F3F4F6', material: 'fabric', style: 'modern' },
-            properties: { solid: true, interactive: true, movable: false }
-          },
-          {
-            id: 'nightstand',
-            name: 'Nightstand',
-            type: 'furniture',
-            position: { x: 1070, y: 370, rotation: 0 },
-            geometry: { width: 40, height: 40 },
-            visual: { color: '#8B4513', material: 'wood', style: 'modern' },
-            properties: { solid: true, interactive: true, movable: true }
-          }
-        ]
-      };
+      if (floorPlanResponse.ok) {
+        const floorPlanData = await floorPlanResponse.json();
+        setCurrentFloorPlan(floorPlanData);
+      } else if (floorPlanResponse.status === 404) {
+        // No floor plan exists yet, use default
+        const defaultFloorPlan = await createDefaultFloorPlan();
+        setCurrentFloorPlan(defaultFloorPlan);
+      } else {
+        throw new Error('Failed to load floor plan');
+      }
 
-      const mockAssistant: Assistant = {
-        id: 'default',
-        location: {
-          position: { x: 650, y: 300 },
-          facing: 'right',
-          facing_angle: 45
-        },
-        status: {
-          mood: 'happy',
-          action: 'idle',
-          energy_level: 0.8,
-          mode: 'active'
-        }
-      };
-
-      setCurrentFloorPlan(mockFloorPlan);
-
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Load assistant state from API
+      const assistantResponse = await fetch('/api/assistant/state');
+      if (assistantResponse.ok) {
+        const assistantData = await assistantResponse.json();
+        // Update assistant state through the store
+        updateAssistantPosition({
+          x: assistantData.position.x,
+          y: assistantData.position.y
+        });
+      }
 
     } catch (err) {
-      console.error('Failed to load floor plan:', err);
+      logger.error('Failed to load floor plan:', err);
     }
   };
 
   // Handle object selection
   const handleObjectClick = useCallback((objectId: string) => {
     selectObject(selectedObjectId === objectId ? null : objectId);
-    console.log('Object clicked:', objectId);
+    logger.debug('Object clicked:', objectId);
   }, [selectObject, selectedObjectId]);
 
-  // Handle position clicks (for movement)
-  const handlePositionClick = useCallback((position: Position) => {
-    console.log('Position clicked (pixels):', position);
+  // Handle position clicks (for movement and storage placement)
+  const handlePositionClick = useCallback(async (position: Position) => {
+    logger.debug('Position clicked (pixels):', position);
 
-    // Convert pixel coordinates to grid coordinates for backend compatibility
-    const gridPosition = pixelToGrid(position, currentFloorPlan?.dimensions);
-    console.log('Converted to grid coordinates:', gridPosition);
+    // Check if we're in storage placement mode
+    if (isStoragePlacementActive && selectedStorageItemId) {
+      logger.debug('Placing storage item:', selectedStorageItemId, 'at pixel coordinates:', position);
 
-    // Send movement command via WebSocket if connected
-    if (isConnected) {
-      sendAssistantMove(gridPosition.x, gridPosition.y);
-    } else {
-      console.warn('Not connected to WebSocket - cannot send movement command');
+      // Use pixel coordinates for storage placement
+      const success = await placeFromStorage(selectedStorageItemId, position);
+      if (success) {
+        clearStoragePlacement();
+        logger.info('Storage item placed successfully at:', position);
+      } else {
+        logger.error('Failed to place storage item');
+      }
+      return;
     }
-  }, [isConnected, sendAssistantMove, currentFloorPlan?.dimensions]);
+
+    // For assistant movement, use pixel coordinates directly
+    // Backend should handle any necessary conversions
+    if (isConnected) {
+      sendAssistantMove(position.x, position.y);
+    } else {
+      logger.warn('Not connected to WebSocket - cannot send movement command');
+    }
+  }, [isConnected, sendAssistantMove, isStoragePlacementActive, selectedStorageItemId, placeFromStorage, clearStoragePlacement]);
 
   // Handle assistant movement (local updates)
   const handleAssistantMove = useCallback((position: Position) => {
@@ -231,12 +165,12 @@ export const FloorPlanContainer: React.FC<FloorPlanContainerProps> = ({
   // Handle object movement (drag and drop)
   const handleObjectMove = useCallback((objectId: string, position: Position) => {
     updateFurniturePosition(objectId, position);
-    console.log(`Furniture ${objectId} moved to (${position.x}, ${position.y})`);
+    logger.debug(`Furniture ${objectId} moved to (${position.x}, ${position.y})`);
   }, [updateFurniturePosition]);
 
   // Handle object interactions (right-click actions)
   const handleObjectInteract = useCallback(async (objectId: string, action: string) => {
-    console.log(`Object interaction: ${objectId} - ${action}`);
+    logger.debug(`Object interaction: ${objectId} - ${action}`);
 
     // Send interaction command to backend
     try {
@@ -248,7 +182,7 @@ export const FloorPlanContainer: React.FC<FloorPlanContainerProps> = ({
 
       if (response.ok) {
         const result = await response.json();
-        console.log(`Interaction result:`, result);
+        logger.debug(`Interaction result:`, result);
 
         // If it's a sit action, update assistant position
         if (action === 'sit' && result.assistant_position) {
@@ -256,7 +190,7 @@ export const FloorPlanContainer: React.FC<FloorPlanContainerProps> = ({
         }
       }
     } catch (error) {
-      console.error(`Failed to interact with object:`, error);
+      logger.error(`Failed to interact with object:`, error);
     }
   }, [updateAssistantPosition]);
 
@@ -312,6 +246,7 @@ export const FloorPlanContainer: React.FC<FloorPlanContainerProps> = ({
         onObjectInteract={handleObjectInteract}
         onPositionClick={handlePositionClick}
         onAssistantMove={handleAssistantMove}
+        isStoragePlacementActive={isStoragePlacementActive}
         className="w-full h-full"
       />
 

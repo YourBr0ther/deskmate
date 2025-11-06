@@ -9,6 +9,7 @@ import React, { useState, useCallback } from 'react';
 import { useLayoutConfig } from '../../hooks/useDeviceDetection';
 import { useFloorPlanStore } from '../../stores/floorPlanStore';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { useRoomStore } from '../../stores/roomStore';
 import DebugOverlay from '../Debug/DebugOverlay';
 import DebugPanel from '../Debug/DebugPanel';
 
@@ -29,6 +30,7 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({ children }) => {
   const layoutConfig = useLayoutConfig();
   const { currentFloorPlan } = useFloorPlanStore();
   const { openSettings } = useSettingsStore();
+  const { toggleStorageVisibility, storageVisible } = useRoomStore();
   const [sidebarWidth, setSidebarWidth] = useState(30); // Percentage
   const [isResizing, setIsResizing] = useState(false);
   const [showFloorPlanOptions, setShowFloorPlanOptions] = useState(false);
@@ -89,6 +91,19 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({ children }) => {
                 className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-md border border-blue-200 hover:bg-blue-200"
               >
                 Floor Plans
+              </button>
+              <button
+                onClick={toggleStorageVisibility}
+                className={`p-2 rounded transition-colors ${
+                  storageVisible
+                    ? 'text-amber-600 bg-amber-100 hover:bg-amber-200'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                }`}
+                title={storageVisible ? "Close Storage Closet" : "Open Storage Closet"}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
               </button>
               <button
                 onClick={openSettings}
