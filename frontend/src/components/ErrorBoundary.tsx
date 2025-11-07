@@ -3,6 +3,7 @@
  */
 
 import React, { Component, ErrorInfo, ReactNode } from 'react';
+
 import { logger } from '../utils/logger';
 
 interface ErrorBoundaryProps {

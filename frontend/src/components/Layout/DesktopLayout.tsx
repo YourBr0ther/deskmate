@@ -6,10 +6,11 @@
  */
 
 import React, { useState, useCallback } from 'react';
+
 import { useLayoutConfig } from '../../hooks/useDeviceDetection';
 import { useFloorPlanStore } from '../../stores/floorPlanStore';
-import { useSettingsStore } from '../../stores/settingsStore';
 import { useRoomStore } from '../../stores/roomStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 import DebugOverlay from '../Debug/DebugOverlay';
 import DebugPanel from '../Debug/DebugPanel';
 

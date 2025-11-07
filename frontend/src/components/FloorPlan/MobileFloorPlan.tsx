@@ -9,6 +9,7 @@
  */
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
+
 import { useDeviceDetection } from '../../hooks/useDeviceDetection';
 import { useTouchGestures, TouchPoint } from '../../hooks/useTouchGestures';
 import { FloorPlan, Assistant, FurnitureItem, Position } from '../../types/floorPlan';

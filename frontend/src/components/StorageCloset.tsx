@@ -3,6 +3,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+
 import { useRoomStore } from '../stores/roomStore';
 import { StorageItem, Position } from '../types/room';
 

@@ -3,6 +3,7 @@
  */
 
 import React, { useState, KeyboardEvent } from 'react';
+
 import { useChatStore } from '../../stores/chatStore';
 
 const ChatInput: React.FC = () => {

@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
+
 import { useDeviceDetection, useLayoutConfig } from '../../hooks/useDeviceDetection';
 import { useSettingsStore } from '../../stores/settingsStore';
 import DebugOverlay from '../Debug/DebugOverlay';

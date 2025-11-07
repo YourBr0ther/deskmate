@@ -8,9 +8,9 @@
  * backward compatibility during the migration period.
  */
 
-import { useSpatialStore, SpatialObject, Room } from '../stores/spatialStore';
-import { useRoomStore } from '../stores/roomStore';
 import { useFloorPlanStore } from '../stores/floorPlanStore';
+import { useRoomStore } from '../stores/roomStore';
+import { useSpatialStore, SpatialObject, Room } from '../stores/spatialStore';
 import { LegacyGridConverter } from '../utils/coordinateSystem';
 
 export interface MigrationResult {

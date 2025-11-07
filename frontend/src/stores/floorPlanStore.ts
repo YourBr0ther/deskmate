@@ -6,6 +6,7 @@
  */
 
 import { create } from 'zustand';
+
 import { FloorPlan, Assistant, Position, FurnitureItem } from '../types/floorPlan';
 import { gridToPixel } from '../utils/coordinateConversion';
 

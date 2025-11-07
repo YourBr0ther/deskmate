@@ -3,10 +3,11 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useSettingsStore } from '../../stores/settingsStore';
+
 import { useChatStore } from '../../stores/chatStore';
 import { usePersonaStore } from '../../stores/personaStore';
 import { useRoomStore } from '../../stores/roomStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 
 interface PerformanceStats {
   fps: number;

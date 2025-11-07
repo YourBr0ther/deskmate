@@ -9,8 +9,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Room, Doorway, FloorPlan } from '../../types/floorPlan';
+
 import { useRoomNavigation } from '../../hooks/useRoomNavigation';
+import { Room, Doorway, FloorPlan } from '../../types/floorPlan';
 
 interface RoomNavigationPanelProps {
   floorPlan: FloorPlan | null;

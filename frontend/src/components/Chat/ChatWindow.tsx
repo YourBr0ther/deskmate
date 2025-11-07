@@ -3,11 +3,12 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+
+import ChatInput from './ChatInput';
+import MessageList from './MessageList';
+import ModelSelector from './ModelSelector';
 import { useChatStore } from '../../stores/chatStore';
 import { usePersonaStore } from '../../stores/personaStore';
-import MessageList from './MessageList';
-import ChatInput from './ChatInput';
-import ModelSelector from './ModelSelector';
 
 const ChatWindow: React.FC = () => {
   const {

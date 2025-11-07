@@ -7,6 +7,7 @@
  */
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+
 import { useRoomNavigation, NavigationPath } from '../../hooks/useRoomNavigation';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { FloorPlan, Room, Wall, Doorway, FurnitureItem, Assistant, Position } from '../../types/floorPlan';

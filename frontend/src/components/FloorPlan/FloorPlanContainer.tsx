@@ -6,12 +6,13 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+
+import TopDownRenderer from './TopDownRenderer';
 import { useDeviceDetection } from '../../hooks/useDeviceDetection';
 import { useChatStore } from '../../stores/chatStore';
 import { useFloorPlanStore } from '../../stores/floorPlanStore';
 import { useRoomStore } from '../../stores/roomStore';
 import { FloorPlan, Assistant, Position } from '../../types/floorPlan';
-import TopDownRenderer from './TopDownRenderer';
 import { logger } from '../../utils/logger';
 
 

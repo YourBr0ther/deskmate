@@ -7,15 +7,15 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+
 import { useDeviceDetection } from '../../hooks/useDeviceDetection';
 import { useFloorPlanManager, FloorPlanTemplate } from '../../hooks/useFloorPlanManager';
 import { useRoomNavigation } from '../../hooks/useRoomNavigation';
 import { FloorPlan, Room, Doorway, Assistant } from '../../types/floorPlan';
-
-import FloorPlanSelector from '../FloorPlan/FloorPlanSelector';
-import RoomNavigationPanel from '../Navigation/RoomNavigationPanel';
-import { TopDownRenderer } from '../FloorPlan/TopDownRenderer';
 import FloatingChatWidget from '../Chat/FloatingChatWidget';
+import FloorPlanSelector from '../FloorPlan/FloorPlanSelector';
+import { TopDownRenderer } from '../FloorPlan/TopDownRenderer';
+import RoomNavigationPanel from '../Navigation/RoomNavigationPanel';
 
 interface FloorPlanLayoutProps {
   className?: string;

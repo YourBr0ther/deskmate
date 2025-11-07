@@ -3,9 +3,10 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { useSettingsStore } from '../stores/settingsStore';
-import { useChatStore } from '../stores/chatStore';
+
 import { MessageCleanupService } from '../services/messageCleanupService';
+import { useChatStore } from '../stores/chatStore';
+import { useSettingsStore } from '../stores/settingsStore';
 
 export const useMessageCleanup = () => {
   const { chat } = useSettingsStore();

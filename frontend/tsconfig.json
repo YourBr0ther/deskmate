@@ -4,7 +4,7 @@
     "lib": [
       "dom",
       "dom.iterable",
-      "es6"
+      "esnext"
     ],
     "allowJs": true,
     "skipLibCheck": true,
@@ -26,10 +26,40 @@
       "@/hooks/*": ["hooks/*"],
       "@/stores/*": ["stores/*"],
       "@/types/*": ["types/*"],
-      "@/utils/*": ["utils/*"]
-    }
+      "@/utils/*": ["utils/*"],
+      "@/services/*": ["services/*"],
+      "@/contexts/*": ["contexts/*"]
+    },
+
+    // Enhanced type checking (gradual adoption)
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "exactOptionalPropertyTypes": false,
+    "noImplicitReturns": false,
+    "noUncheckedIndexedAccess": false,
+
+    // Better IDE support
+    "incremental": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "removeComments": true,
+    "importHelpers": true,
+
+    // Module resolution enhancements
+    "allowUmdGlobalAccess": false,
+    "preserveSymlinks": false
   },
   "include": [
-    "src"
+    "src/**/*",
+    "src/**/*.json"
+  ],
+  "exclude": [
+    "node_modules",
+    "build",
+    "dist",
+    "**/*.test.*",
+    "**/*.spec.*"
   ]
 }

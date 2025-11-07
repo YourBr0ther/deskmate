@@ -14,8 +14,9 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
-import { Position, Size } from '../utils/coordinateSystem';
+
 import { api } from '../utils/api';
+import { Position, Size } from '../utils/coordinateSystem';
 
 // ============================================================================
 // Type Definitions

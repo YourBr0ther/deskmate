@@ -3,6 +3,7 @@
  */
 
 import React, { useEffect } from 'react';
+
 import { useSettingsStore } from '../../stores/settingsStore';
 
 const SettingsPanel: React.FC = () => {

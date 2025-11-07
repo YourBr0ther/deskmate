@@ -5,8 +5,8 @@
  * event handling, and integration with the spatial store.
  */
 
-import { useSpatialStore } from '../stores/spatialStore';
 import { useChatStore } from '../stores/chatStore';
+import { useSpatialStore } from '../stores/spatialStore';
 import { Position } from '../utils/coordinateSystem';
 
 // ============================================================================

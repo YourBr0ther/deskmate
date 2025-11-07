@@ -7,6 +7,7 @@
  */
 
 import React, { Suspense } from 'react';
+
 import { useDeviceDetection } from '../../hooks/useDeviceDetection';
 
 // Lazy load layout components for better performance

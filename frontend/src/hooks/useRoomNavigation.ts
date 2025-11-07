@@ -9,6 +9,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+
 import { FloorPlan, Room, Doorway, AssistantLocation } from '../types/floorPlan';
 
 export interface NavigationRequest {

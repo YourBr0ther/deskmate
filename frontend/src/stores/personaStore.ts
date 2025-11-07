@@ -3,6 +3,7 @@
  */
 
 import { create } from 'zustand';
+
 import { PersonaSummary, LoadedPersona } from '../types/persona';
 
 interface PersonaStore {

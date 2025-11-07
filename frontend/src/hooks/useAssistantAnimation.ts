@@ -3,6 +3,7 @@
  */
 
 import { useEffect, useState, useRef } from 'react';
+
 import { Position } from '../types/room';
 
 interface UseAssistantAnimationProps {

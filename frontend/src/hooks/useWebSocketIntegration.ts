@@ -6,9 +6,10 @@
  */
 
 import { useEffect, useRef } from 'react';
+
 import { websocketService } from '../services/websocketService';
-import { useSpatialStore } from '../stores/spatialStore';
 import { useChatStore } from '../stores/chatStore';
+import { useSpatialStore } from '../stores/spatialStore';
 
 interface UseWebSocketOptions {
   autoConnect?: boolean;

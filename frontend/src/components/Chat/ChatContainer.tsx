@@ -6,12 +6,13 @@
  */
 
 import React, { useRef, useEffect } from 'react';
+
+import ModelSelector from './ModelSelector';
 import { useDeviceDetection } from '../../hooks/useDeviceDetection';
+import { useMessageCleanup } from '../../hooks/useMessageCleanup';
 import { useChatStore } from '../../stores/chatStore';
 import { usePersonaStore } from '../../stores/personaStore';
 import { useSettingsStore } from '../../stores/settingsStore';
-import { useMessageCleanup } from '../../hooks/useMessageCleanup';
-import ModelSelector from './ModelSelector';
 
 interface ChatContainerProps {
   className?: string;

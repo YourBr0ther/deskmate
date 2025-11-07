@@ -9,12 +9,13 @@
  */
 
 import React, { useEffect } from 'react';
-import { usePersonaStore } from './stores/personaStore';
-import ResponsiveLayout from './components/Layout/ResponsiveLayout';
-import SettingsPanel from './components/Settings/SettingsPanel';
-import PerformanceMonitor from './components/PerformanceMonitor';
+
 import ErrorBoundary from './components/ErrorBoundary';
+import ResponsiveLayout from './components/Layout/ResponsiveLayout';
+import PerformanceMonitor from './components/PerformanceMonitor';
+import SettingsPanel from './components/Settings/SettingsPanel';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { usePersonaStore } from './stores/personaStore';
 import './styles/themes.css';
 
 const App: React.FC = () => {

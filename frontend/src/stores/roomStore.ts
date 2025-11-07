@@ -3,8 +3,8 @@
  */
 
 import { create } from 'zustand';
+
 import { RoomState, GridObject, Assistant, Position, GridMap, StorageItem } from '../types/room';
-import { StoreErrorState, createInitialErrorState, withErrorHandling } from '../utils/storeErrorHandler';
 import { api } from '../utils/api';
 import {
   ROOM_WIDTH,
@@ -15,6 +15,7 @@ import {
   clampToRoom,
   LegacyGridConverter
 } from '../utils/coordinateSystem';
+import { StoreErrorState, createInitialErrorState, withErrorHandling } from '../utils/storeErrorHandler';
 
 interface RoomStore extends RoomState, StoreErrorState {
   // Actions

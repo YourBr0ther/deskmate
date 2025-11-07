@@ -6,6 +6,7 @@
  */
 
 import React, { useState } from 'react';
+
 import { useDeviceDetection, useLayoutConfig } from '../../hooks/useDeviceDetection';
 
 // Placeholder components - these will be implemented in later tasks

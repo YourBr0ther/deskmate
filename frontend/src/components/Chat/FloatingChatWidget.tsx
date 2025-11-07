@@ -8,6 +8,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
+
 import { useDeviceDetection } from '../../hooks/useDeviceDetection';
 
 export type ChatWidgetState = 'minimized' | 'partial' | 'expanded';
