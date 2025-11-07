@@ -16,7 +16,11 @@ from sqlalchemy import select, delete, update, func
 from sqlalchemy.orm import selectinload
 
 from app.models.room_objects import GridObject, ObjectState, StorageItem, RoomLayout
-from app.db.database import AsyncSessionLocal
+from app.repositories.room_repository import (
+    RoomObjectRepository,
+    ObjectStateRepository,
+    StorageItemRepository
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,288 +30,197 @@ class RoomService:
 
     def __init__(self):
         self.current_layout_id = "default"
-
-    async def get_db_session(self) -> AsyncSession:
-        """Get a database session."""
-        return AsyncSessionLocal()
+        self.object_repo = RoomObjectRepository()
+        self.state_repo = ObjectStateRepository()
+        self.storage_repo = StorageItemRepository()
 
     # Object Management
-    async def get_all_objects(self) -> List[Dict[str, Any]]:
+    async def get_all_objects(self, session: AsyncSession) -> List[Dict[str, Any]]:
         """Get all objects currently in the room."""
-        async with await self.get_db_session() as session:
-            stmt = select(GridObject).options(selectinload(GridObject.states))
-            result = await session.execute(stmt)
-            objects = result.scalars().all()
+        objects = await self.object_repo.get_all_with_states(session)
+        return [self._object_to_dict_with_states(obj) for obj in objects]
 
-            return [self._object_to_dict_with_states(obj) for obj in objects]
-
-    async def get_object_by_id(self, object_id: str) -> Optional[Dict[str, Any]]:
+    async def get_object_by_id(self, session: AsyncSession, object_id: str) -> Optional[Dict[str, Any]]:
         """Get a specific object by ID."""
-        async with await self.get_db_session() as session:
-            stmt = select(GridObject).options(selectinload(GridObject.states)).where(GridObject.id == object_id)
-            result = await session.execute(stmt)
-            obj = result.scalar_one_or_none()
+        obj = await self.object_repo.get_by_id_with_states(session, object_id)
+        return self._object_to_dict_with_states(obj) if obj else None
 
-            return self._object_to_dict_with_states(obj) if obj else None
-
-    async def create_object(self, object_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_object(self, session: AsyncSession, object_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new object in the room."""
-        async with await self.get_db_session() as session:
-            # Check for collision
-            position = object_data["position"]
-            size = object_data["size"]
+        # Check for collision
+        position = object_data["position"]
+        size = object_data["size"]
 
-            if await self._check_collision(session, position["x"], position["y"], size["width"], size["height"]):
-                raise ValueError(f"Position ({position['x']}, {position['y']}) is occupied")
+        if await self.object_repo.check_collision(session, position["x"], position["y"], size["width"], size["height"]):
+            raise ValueError(f"Position ({position['x']}, {position['y']}) is occupied")
 
-            # Create object
-            obj = GridObject(
-                id=object_data["id"],
-                name=object_data["name"],
-                description=object_data.get("description", ""),
-                object_type=object_data["type"],
-                position_x=position["x"],
-                position_y=position["y"],
-                size_width=size["width"],
-                size_height=size["height"],
-                is_solid=object_data.get("properties", {}).get("solid", True),
-                is_interactive=object_data.get("properties", {}).get("interactive", True),
-                is_movable=object_data.get("properties", {}).get("movable", False),
-                sprite_name=object_data.get("sprite"),
-                color_scheme=object_data.get("color"),
-                created_by=object_data.get("created_by", "user")
-            )
+        # Create object
+        obj = GridObject(
+            id=object_data["id"],
+            name=object_data["name"],
+            description=object_data.get("description", ""),
+            object_type=object_data["type"],
+            position_x=position["x"],
+            position_y=position["y"],
+            size_width=size["width"],
+            size_height=size["height"],
+            is_solid=object_data.get("properties", {}).get("solid", True),
+            is_interactive=object_data.get("properties", {}).get("interactive", True),
+            is_movable=object_data.get("properties", {}).get("movable", False),
+            sprite_name=object_data.get("sprite"),
+            color_scheme=object_data.get("color"),
+            created_by=object_data.get("created_by", "user")
+        )
 
-            session.add(obj)
-            await session.commit()
-            await session.refresh(obj)
+        created_obj = await self.object_repo.create(session, obj)
+        logger.info(f"Created object {created_obj.id} at ({created_obj.position_x}, {created_obj.position_y})")
+        return created_obj.to_dict()
 
-            logger.info(f"Created object {obj.id} at ({obj.position_x}, {obj.position_y})")
-            return obj.to_dict()
-
-    async def move_object(self, object_id: str, new_x: int, new_y: int) -> Dict[str, Any]:
+    async def move_object(self, session: AsyncSession, object_id: str, new_x: int, new_y: int) -> Dict[str, Any]:
         """Move an object to a new position."""
-        async with await self.get_db_session() as session:
-            # Get object
-            stmt = select(GridObject).where(GridObject.id == object_id)
-            result = await session.execute(stmt)
-            obj = result.scalar_one_or_none()
+        # Get object
+        obj = await self.object_repo.get_by_id(session, object_id)
 
-            if not obj:
-                raise ValueError(f"Object {object_id} not found")
+        if not obj:
+            raise ValueError(f"Object {object_id} not found")
 
-            if not obj.is_movable:
-                raise ValueError(f"Object {object_id} is not movable")
+        if not obj.is_movable:
+            raise ValueError(f"Object {object_id} is not movable")
 
-            # Check collision at new position
-            if await self._check_collision(session, new_x, new_y, obj.size_width, obj.size_height, exclude_id=object_id):
-                raise ValueError(f"Position ({new_x}, {new_y}) is occupied")
+        # Check collision at new position
+        if await self.object_repo.check_collision(session, new_x, new_y, obj.size_width, obj.size_height, exclude_id=object_id):
+            raise ValueError(f"Position ({new_x}, {new_y}) is occupied")
 
-            # Update position
-            obj.position_x = new_x
-            obj.position_y = new_y
-            obj.last_moved_at = func.now()
+        # Update position
+        obj.position_x = new_x
+        obj.position_y = new_y
+        obj.last_moved_at = func.now()
 
-            await session.commit()
-            await session.refresh(obj)
+        updated_obj = await self.object_repo.update(session, obj)
+        logger.info(f"Moved object {object_id} to ({new_x}, {new_y})")
+        return updated_obj.to_dict()
 
-            logger.info(f"Moved object {object_id} to ({new_x}, {new_y})")
-            return obj.to_dict()
-
-    async def delete_object(self, object_id: str) -> bool:
+    async def delete_object(self, session: AsyncSession, object_id: str) -> bool:
         """Remove an object from the room."""
-        async with await self.get_db_session() as session:
-            stmt = delete(GridObject).where(GridObject.id == object_id)
-            result = await session.execute(stmt)
-            await session.commit()
-
-            deleted = result.rowcount > 0
-            if deleted:
-                logger.info(f"Deleted object {object_id}")
-            return deleted
+        deleted = await self.object_repo.delete_by_id(session, object_id)
+        if deleted:
+            logger.info(f"Deleted object {object_id}")
+        return deleted
 
     # Object State Management
-    async def set_object_state(self, object_id: str, state_key: str, state_value: str, updated_by: str = "user") -> bool:
+    async def set_object_state(self, session: AsyncSession, object_id: str, state_key: str, state_value: str, updated_by: str = "user") -> bool:
         """Set or update an object's state."""
-        async with await self.get_db_session() as session:
-            # Check if object exists
-            obj_stmt = select(GridObject).where(GridObject.id == object_id)
-            obj_result = await session.execute(obj_stmt)
-            if not obj_result.scalar_one_or_none():
-                raise ValueError(f"Object {object_id} not found")
+        # Check if object exists
+        if not await self.object_repo.exists(session, object_id):
+            raise ValueError(f"Object {object_id} not found")
 
-            # Check if state already exists
-            state_stmt = select(ObjectState).where(
-                ObjectState.object_id == object_id,
-                ObjectState.state_key == state_key
-            )
-            state_result = await session.execute(state_stmt)
-            existing_state = state_result.scalar_one_or_none()
+        # Set the state
+        await self.state_repo.set_state(session, object_id, state_key, state_value, updated_by)
+        logger.info(f"Set {object_id}.{state_key} = {state_value}")
+        return True
 
-            if existing_state:
-                # Update existing state
-                existing_state.state_value = state_value
-                existing_state.updated_by = updated_by
-            else:
-                # Create new state
-                new_state = ObjectState(
-                    object_id=object_id,
-                    state_key=state_key,
-                    state_value=state_value,
-                    updated_by=updated_by
-                )
-                session.add(new_state)
-
-            await session.commit()
-            logger.info(f"Set {object_id}.{state_key} = {state_value}")
-            return True
-
-    async def get_object_states(self, object_id: str) -> Dict[str, str]:
+    async def get_object_states(self, session: AsyncSession, object_id: str) -> Dict[str, str]:
         """Get all states for an object."""
-        async with await self.get_db_session() as session:
-            stmt = select(ObjectState).where(ObjectState.object_id == object_id)
-            result = await session.execute(stmt)
-            states = result.scalars().all()
-
-            return {state.state_key: state.state_value for state in states}
+        states = await self.state_repo.get_states_for_object(session, object_id)
+        return {state.state_key: state.state_value for state in states}
 
     # Storage Closet Management
-    async def get_storage_items(self) -> List[Dict[str, Any]]:
+    async def get_storage_items(self, session: AsyncSession) -> List[Dict[str, Any]]:
         """Get all items in storage closet."""
-        async with await self.get_db_session() as session:
-            stmt = select(StorageItem).order_by(StorageItem.stored_at.desc())
-            result = await session.execute(stmt)
-            items = result.scalars().all()
+        items = await self.storage_repo.get_all_ordered_by_stored_date(session)
+        return [item.to_dict() for item in items]
 
-            return [item.to_dict() for item in items]
-
-    async def add_to_storage(self, item_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def add_to_storage(self, session: AsyncSession, item_data: Dict[str, Any]) -> Dict[str, Any]:
         """Add an item to storage closet."""
-        async with await self.get_db_session() as session:
-            item = StorageItem(
-                id=item_data["id"],
-                name=item_data["name"],
-                description=item_data.get("description", ""),
-                object_type=item_data["type"],
-                default_size_width=item_data.get("default_size", {}).get("width", 1),
-                default_size_height=item_data.get("default_size", {}).get("height", 1),
-                is_solid=item_data.get("properties", {}).get("solid", True),
-                is_interactive=item_data.get("properties", {}).get("interactive", True),
-                sprite_name=item_data.get("sprite"),
-                color_scheme=item_data.get("color"),
-                created_by=item_data.get("created_by", "user")
-            )
+        item = StorageItem(
+            id=item_data["id"],
+            name=item_data["name"],
+            description=item_data.get("description", ""),
+            object_type=item_data["type"],
+            default_size_width=item_data.get("default_size", {}).get("width", 1),
+            default_size_height=item_data.get("default_size", {}).get("height", 1),
+            is_solid=item_data.get("properties", {}).get("solid", True),
+            is_interactive=item_data.get("properties", {}).get("interactive", True),
+            sprite_name=item_data.get("sprite"),
+            color_scheme=item_data.get("color"),
+            created_by=item_data.get("created_by", "user")
+        )
 
-            session.add(item)
-            await session.commit()
-            await session.refresh(item)
+        created_item = await self.storage_repo.create(session, item)
+        logger.info(f"Added {created_item.id} to storage")
+        return created_item.to_dict()
 
-            logger.info(f"Added {item.id} to storage")
-            return item.to_dict()
-
-    async def place_from_storage(self, item_id: str, x: int, y: int) -> Dict[str, Any]:
+    async def place_from_storage(self, session: AsyncSession, item_id: str, x: int, y: int) -> Dict[str, Any]:
         """Place an item from storage into the room."""
-        async with await self.get_db_session() as session:
-            # Get storage item
-            storage_stmt = select(StorageItem).where(StorageItem.id == item_id)
-            storage_result = await session.execute(storage_stmt)
-            storage_item = storage_result.scalar_one_or_none()
+        # Get storage item
+        storage_item = await self.storage_repo.get_by_id(session, item_id)
 
-            if not storage_item:
-                raise ValueError(f"Storage item {item_id} not found")
+        if not storage_item:
+            raise ValueError(f"Storage item {item_id} not found")
 
-            # Check collision
-            if await self._check_collision(session, x, y, storage_item.default_size_width, storage_item.default_size_height):
-                raise ValueError(f"Position ({x}, {y}) is occupied")
+        # Check collision
+        if await self.object_repo.check_collision(session, x, y, storage_item.default_size_width, storage_item.default_size_height):
+            raise ValueError(f"Position ({x}, {y}) is occupied")
 
-            # Create grid object from storage item
-            grid_obj = GridObject(
-                id=storage_item.id,
-                name=storage_item.name,
-                description=storage_item.description,
-                object_type=storage_item.object_type,
-                position_x=x,
-                position_y=y,
-                size_width=storage_item.default_size_width,
-                size_height=storage_item.default_size_height,
-                is_solid=storage_item.is_solid,
-                is_interactive=storage_item.is_interactive,
-                is_movable=True,  # Items from storage are always movable
-                sprite_name=storage_item.sprite_name,
-                color_scheme=storage_item.color_scheme,
-                created_by=storage_item.created_by
-            )
+        # Create grid object from storage item
+        grid_obj = GridObject(
+            id=storage_item.id,
+            name=storage_item.name,
+            description=storage_item.description,
+            object_type=storage_item.object_type,
+            position_x=x,
+            position_y=y,
+            size_width=storage_item.default_size_width,
+            size_height=storage_item.default_size_height,
+            is_solid=storage_item.is_solid,
+            is_interactive=storage_item.is_interactive,
+            is_movable=True,  # Items from storage are always movable
+            sprite_name=storage_item.sprite_name,
+            color_scheme=storage_item.color_scheme,
+            created_by=storage_item.created_by
+        )
 
-            # Update usage count and remove from storage
-            storage_item.usage_count += 1
-            session.add(grid_obj)
-            await session.delete(storage_item)
+        # Update usage count and remove from storage
+        await self.storage_repo.increment_usage_count(session, item_id)
+        created_grid_obj = await self.object_repo.create(session, grid_obj)
+        await self.storage_repo.delete_by_id(session, item_id)
 
-            await session.commit()
-            await session.refresh(grid_obj)
+        logger.info(f"Placed {item_id} from storage at ({x}, {y})")
+        return created_grid_obj.to_dict()
 
-            logger.info(f"Placed {item_id} from storage at ({x}, {y})")
-            return grid_obj.to_dict()
-
-    async def store_object(self, object_id: str) -> Dict[str, Any]:
+    async def store_object(self, session: AsyncSession, object_id: str) -> Dict[str, Any]:
         """Move an object from the room to storage."""
-        async with await self.get_db_session() as session:
-            # Get object
-            obj_stmt = select(GridObject).where(GridObject.id == object_id)
-            obj_result = await session.execute(obj_stmt)
-            obj = obj_result.scalar_one_or_none()
+        # Get object
+        obj = await self.object_repo.get_by_id(session, object_id)
 
-            if not obj:
-                raise ValueError(f"Object {object_id} not found")
+        if not obj:
+            raise ValueError(f"Object {object_id} not found")
 
-            if not obj.is_movable:
-                raise ValueError(f"Object {object_id} cannot be stored")
+        if not obj.is_movable:
+            raise ValueError(f"Object {object_id} cannot be stored")
 
-            # Create storage item
-            storage_item = StorageItem(
-                id=obj.id,
-                name=obj.name,
-                description=obj.description,
-                object_type=obj.object_type,
-                default_size_width=obj.size_width,
-                default_size_height=obj.size_height,
-                is_solid=obj.is_solid,
-                is_interactive=obj.is_interactive,
-                sprite_name=obj.sprite_name,
-                color_scheme=obj.color_scheme,
-                created_by=obj.created_by
-            )
+        # Create storage item
+        storage_item = StorageItem(
+            id=obj.id,
+            name=obj.name,
+            description=obj.description,
+            object_type=obj.object_type,
+            default_size_width=obj.size_width,
+            default_size_height=obj.size_height,
+            is_solid=obj.is_solid,
+            is_interactive=obj.is_interactive,
+            sprite_name=obj.sprite_name,
+            color_scheme=obj.color_scheme,
+            created_by=obj.created_by
+        )
 
-            # Remove from room and add to storage
-            session.add(storage_item)
-            await session.delete(obj)
+        # Remove from room and add to storage
+        created_storage_item = await self.storage_repo.create(session, storage_item)
+        await self.object_repo.delete_by_id(session, object_id)
 
-            await session.commit()
-            await session.refresh(storage_item)
+        logger.info(f"Stored object {object_id}")
+        return created_storage_item.to_dict()
 
-            logger.info(f"Stored object {object_id}")
-            return storage_item.to_dict()
-
-    # Collision Detection
-    async def _check_collision(self, session: AsyncSession, x: int, y: int, width: int, height: int, exclude_id: Optional[str] = None) -> bool:
-        """Check if position collides with existing objects."""
-        stmt = select(GridObject)
-        if exclude_id:
-            stmt = stmt.where(GridObject.id != exclude_id)
-
-        result = await session.execute(stmt)
-        objects = result.scalars().all()
-
-        for obj in objects:
-            # Check if rectangles overlap
-            if (x < obj.position_x + obj.size_width and
-                x + width > obj.position_x and
-                y < obj.position_y + obj.size_height and
-                y + height > obj.position_y and
-                obj.is_solid):
-                return True
-
-        return False
 
     def _object_to_dict_with_states(self, obj: GridObject) -> Dict[str, Any]:
         """Convert object to dict including states."""
@@ -319,7 +232,7 @@ class RoomService:
         return result
 
     # Initialize default objects
-    async def initialize_default_objects(self):
+    async def initialize_default_objects(self, session: AsyncSession):
         """Create the default hardcoded room objects."""
         default_objects = [
             {
@@ -370,9 +283,9 @@ class RoomService:
 
         for obj_data in default_objects:
             try:
-                existing = await self.get_object_by_id(obj_data["id"])
+                existing = await self.get_object_by_id(session, obj_data["id"])
                 if not existing:
-                    await self.create_object(obj_data)
+                    await self.create_object(session, obj_data)
                     logger.info(f"Created default object: {obj_data['id']}")
             except Exception as e:
                 logger.warning(f"Could not create default object {obj_data['id']}: {e}")

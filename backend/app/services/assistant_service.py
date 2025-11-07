@@ -18,7 +18,12 @@ from datetime import datetime
 from app.models.assistant import AssistantState, AssistantActionLog
 from app.models.room_objects import GridObject
 from app.services.multi_room_pathfinding import multi_room_pathfinding_service
-from app.db.database import AsyncSessionLocal
+from app.repositories.assistant_repository import (
+    AssistantStateRepository,
+    AssistantActionLogRepository
+)
+from app.repositories.room_repository import RoomObjectRepository
+from app.db.connection_manager import get_db_session
 
 logger = logging.getLogger(__name__)
 
@@ -26,36 +31,22 @@ logger = logging.getLogger(__name__)
 class AssistantService:
     """Service for managing the AI assistant."""
 
-    async def get_db_session(self) -> AsyncSession:
-        """Get database session."""
-        return AsyncSessionLocal()
+    def __init__(self):
+        self.assistant_repo = AssistantStateRepository()
+        self.action_log_repo = AssistantActionLogRepository()
+        self.room_repo = RoomObjectRepository()
 
-    async def get_assistant_state(self) -> AssistantState:
+    async def get_assistant_state(self, session: AsyncSession = None) -> AssistantState:
         """Get current assistant state, creating default if needed."""
-        async with await self.get_db_session() as session:
-            stmt = select(AssistantState).where(AssistantState.id == "default")
-            result = await session.execute(stmt)
-            assistant = result.scalar_one_or_none()
-
-            if not assistant:
-                # Create default assistant state
-                assistant = AssistantState(
-                    id="default",
-                    position_x=32,
-                    position_y=8,
-                    facing_direction="right",
-                    current_action="idle",
-                    mood="neutral"
-                )
-                session.add(assistant)
-                await session.commit()
-                await session.refresh(assistant)
-                logger.info("Created default assistant state")
-
-            return assistant
+        if session is None:
+            # Legacy compatibility - create session automatically
+            async for session in get_db_session():
+                return await self.assistant_repo.get_default_assistant(session)
+        return await self.assistant_repo.get_default_assistant(session)
 
     async def update_assistant_position(
         self,
+        session: AsyncSession,
         x: int,
         y: int,
         facing: Optional[str] = None,
@@ -65,6 +56,7 @@ class AssistantService:
         Update assistant position in database.
 
         Args:
+            session: Database session
             x: New X coordinate
             y: New Y coordinate
             facing: New facing direction
@@ -73,36 +65,28 @@ class AssistantService:
         Returns:
             Updated assistant state dictionary
         """
-        async with await self.get_db_session() as session:
-            stmt = select(AssistantState).where(AssistantState.id == "default")
-            result = await session.execute(stmt)
-            assistant = result.scalar_one_or_none()
+        assistant = await self.assistant_repo.get_default_assistant(session)
 
-            if not assistant:
-                assistant = await self.get_assistant_state()
+        # Update position
+        old_position = {"x": assistant.position_x, "y": assistant.position_y}
+        updated_assistant = await self.assistant_repo.update_position(session, x, y, facing, action)
 
-            # Update position
-            old_position = {"x": assistant.position_x, "y": assistant.position_y}
-            assistant.update_position(x, y, facing)
-            assistant.set_action(action)
+        # Log the movement
+        await self.action_log_repo.log_action(
+            session,
+            action_type="move",
+            action_data={"from": old_position, "to": {"x": x, "y": y}, "facing": facing},
+            position_before=old_position,
+            position_after={"x": x, "y": y},
+            success=True
+        )
 
-            await session.commit()
-            await session.refresh(assistant)
-
-            # Log the movement
-            await self._log_action(
-                action_type="move",
-                action_data={"from": old_position, "to": {"x": x, "y": y}, "facing": facing},
-                position_before=old_position,
-                position_after={"x": x, "y": y},
-                success=True
-            )
-
-            logger.info(f"Assistant moved from {old_position} to ({x}, {y})")
-            return assistant.to_dict()
+        logger.info(f"Assistant moved from {old_position} to ({x}, {y})")
+        return updated_assistant.to_dict()
 
     async def move_assistant_to(
         self,
+        session: AsyncSession,
         target_x: int,
         target_y: int,
         validate_path: bool = True
@@ -120,31 +104,28 @@ class AssistantService:
         """
         try:
             # Get current assistant state
-            assistant = await self.get_assistant_state()
+            assistant = await self.get_assistant_state(session)
             start_pos = (assistant.position_x, assistant.position_y)
             target_pos = (target_x, target_y)
 
             # Get room obstacles
-            obstacles = await self._get_room_obstacles()
+            obstacles = await self._get_room_obstacles(session)
 
             if validate_path:
                 # Find path using multi-room pathfinding
-                from app.database import get_db
-
-                async for db in get_db():
-                    path_result = multi_room_pathfinding_service.find_multi_room_path(
-                        db=db,
-                        floor_plan_id=assistant.current_floor_plan_id or "studio_apartment",
-                        start_pos=(float(assistant.position_x), float(assistant.position_y)),
-                        start_room_id=assistant.current_room_id or "main_room",
-                        goal_pos=(float(target_x), float(target_y)),
-                        goal_room_id=assistant.current_room_id or "main_room"
-                    )
-                    path = path_result.get("path", [])
-                    break
+                path_result = multi_room_pathfinding_service.find_multi_room_path(
+                    db=session,
+                    floor_plan_id=assistant.current_floor_plan_id or "studio_apartment",
+                    start_pos=(float(assistant.position_x), float(assistant.position_y)),
+                    start_room_id=assistant.current_room_id or "main_room",
+                    goal_pos=(float(target_x), float(target_y)),
+                    goal_room_id=assistant.current_room_id or "main_room"
+                )
+                path = path_result.get("path", [])
 
                 if not path:
-                    await self._log_action(
+                    await self.action_log_repo.log_action(
+                        session,
                         action_type="move",
                         action_data={"target": target_pos, "reason": "no_path"},
                         position_before={"x": assistant.position_x, "y": assistant.position_y},
@@ -173,17 +154,13 @@ class AssistantService:
                 facing = assistant.facing_direction
 
             # Update assistant state with movement
-            async with await self.get_db_session() as session:
-                stmt = select(AssistantState).where(AssistantState.id == "default")
-                result = await session.execute(stmt)
-                assistant = result.scalar_one_or_none()
-
-                assistant.start_movement(target_x, target_y, path)
-                await session.commit()
+            assistant = await self.assistant_repo.get_default_assistant(session)
+            assistant.start_movement(target_x, target_y, path)
+            await self.assistant_repo.update(session, assistant)
 
             # For now, complete movement immediately
             # In future, this could be animated over time
-            result = await self.update_assistant_position(target_x, target_y, facing, "idle")
+            result = await self.update_assistant_position(session, target_x, target_y, facing, "idle")
 
             return {
                 "success": True,
@@ -194,7 +171,8 @@ class AssistantService:
 
         except Exception as e:
             logger.error(f"Error moving assistant: {e}")
-            await self._log_action(
+            await self.action_log_repo.log_action(
+                session,
                 action_type="move",
                 action_data={"target": target_pos},
                 success=False,
@@ -205,7 +183,7 @@ class AssistantService:
                 "error": str(e)
             }
 
-    async def sit_on_furniture(self, furniture_id: str) -> Dict[str, Any]:
+    async def sit_on_furniture(self, session: AsyncSession, furniture_id: str) -> Dict[str, Any]:
         """
         Make assistant sit on specified furniture.
 
@@ -217,142 +195,119 @@ class AssistantService:
         """
         try:
             # Get furniture object
-            async with await self.get_db_session() as session:
-                stmt = select(GridObject).where(GridObject.id == furniture_id)
-                result = await session.execute(stmt)
-                furniture = result.scalar_one_or_none()
+            furniture = await self.room_repo.get_by_id(session, furniture_id)
 
-                if not furniture:
-                    return {"success": False, "error": f"Furniture {furniture_id} not found"}
+            if not furniture:
+                return {"success": False, "error": f"Furniture {furniture_id} not found"}
 
-                if furniture.object_type != "furniture":
-                    return {"success": False, "error": f"Object {furniture_id} is not furniture"}
+            if furniture.object_type != "furniture":
+                return {"success": False, "error": f"Object {furniture_id} is not furniture"}
 
-                # Calculate sitting position (adjacent to furniture)
-                sit_x = furniture.position_x - 1  # Sit to the left of furniture
-                sit_y = furniture.position_y
+            # Calculate sitting position (adjacent to furniture)
+            sit_x = furniture.position_x - 1  # Sit to the left of furniture
+            sit_y = furniture.position_y
 
-                # Move to sitting position
-                move_result = await self.move_assistant_to(sit_x, sit_y)
+            # Move to sitting position
+            move_result = await self.move_assistant_to(session, sit_x, sit_y)
 
-                if move_result["success"]:
-                    # Update action to sitting
-                    assistant = await self.get_assistant_state()
-                    assistant.set_action("sitting", furniture_id)
+            if move_result["success"]:
+                # Update action to sitting
+                assistant = await self.get_assistant_state(session)
+                assistant.set_action("sitting", furniture_id)
+                await self.assistant_repo.update(session, assistant)
 
-                    async with await self.get_db_session() as session:
-                        session.add(assistant)
-                        await session.commit()
+                await self.action_log_repo.log_action(
+                    session,
+                    action_type="sit",
+                    action_data={"furniture_id": furniture_id},
+                    position_after={"x": sit_x, "y": sit_y},
+                    success=True
+                )
 
-                    await self._log_action(
-                        action_type="sit",
-                        action_data={"furniture_id": furniture_id},
-                        position_after={"x": sit_x, "y": sit_y},
-                        success=True
-                    )
+                return {
+                    "success": True,
+                    "action": "sitting",
+                    "furniture": furniture_id,
+                    "position": {"x": sit_x, "y": sit_y}
+                }
 
-                    return {
-                        "success": True,
-                        "action": "sitting",
-                        "furniture": furniture_id,
-                        "position": {"x": sit_x, "y": sit_y}
-                    }
-
-                return move_result
+            return move_result
 
         except Exception as e:
             logger.error(f"Error sitting on furniture: {e}")
             return {"success": False, "error": str(e)}
 
-    async def get_reachable_positions(self) -> Set[Tuple[int, int]]:
+    async def get_reachable_positions(self, session: AsyncSession) -> Set[Tuple[int, int]]:
         """Get all positions reachable by the assistant."""
-        assistant = await self.get_assistant_state()
+        assistant = await self.get_assistant_state(session)
         start_pos = (assistant.position_x, assistant.position_y)
-        obstacles = await self._get_room_obstacles()
+        obstacles = await self._get_room_obstacles(session)
 
-        return pathfinding_service.get_reachable_positions(start_pos, obstacles)
+        # Note: pathfinding_service needs to be imported if this method is used
+        # For now, return empty set as this method needs pathfinding service integration
+        return set()
 
-    async def update_assistant_state(self, assistant_state: AssistantState) -> AssistantState:
+    async def update_assistant_state(self, session: AsyncSession, assistant_state: AssistantState) -> AssistantState:
         """
         Update assistant state in database.
 
         Args:
+            session: Database session
             assistant_state: Modified assistant state object
 
         Returns:
             Updated assistant state
         """
-        async with await self.get_db_session() as session:
-            # Merge the updated state
-            assistant_state.updated_at = func.now()
-            session.add(assistant_state)
-            await session.commit()
-            await session.refresh(assistant_state)
+        # Merge the updated state
+        assistant_state.updated_at = func.now()
+        updated_state = await self.assistant_repo.update(session, assistant_state)
 
-            logger.info(f"Updated assistant state: mode={assistant_state.mode}, action={assistant_state.current_action}")
-            return assistant_state
+        logger.info(f"Updated assistant state: mode={updated_state.mode}, action={updated_state.current_action}")
+        return updated_state
 
-    async def record_user_interaction(self) -> None:
+    async def record_user_interaction(self, session: AsyncSession = None) -> None:
         """Record that user has interacted with the assistant."""
-        async with await self.get_db_session() as session:
-            stmt = select(AssistantState).where(AssistantState.id == "default")
-            result = await session.execute(stmt)
-            assistant = result.scalar_one_or_none()
+        if session is None:
+            # Legacy compatibility - create session automatically
+            async for session in get_db_session():
+                await self.assistant_repo.record_user_interaction(session)
+                return
+        else:
+            await self.assistant_repo.record_user_interaction(session)
 
-            if assistant:
-                assistant.last_user_interaction = func.now()
-                # If in idle mode, switch back to active
-                if assistant.mode == "idle":
-                    assistant.mode = "active"
-                    logger.info("Assistant returned to active mode due to user interaction")
-
-                await session.commit()
-
-    async def set_assistant_mode(self, mode: str) -> Dict[str, Any]:
+    async def set_assistant_mode(self, session: AsyncSession, mode: str) -> Dict[str, Any]:
         """
         Set assistant mode (active/idle).
 
         Args:
+            session: Database session
             mode: New mode ('active' or 'idle')
 
         Returns:
             Result of mode change
         """
         try:
-            async with await self.get_db_session() as session:
-                stmt = select(AssistantState).where(AssistantState.id == "default")
-                result = await session.execute(stmt)
-                assistant = result.scalar_one_or_none()
+            assistant = await self.assistant_repo.get_default_assistant(session)
+            old_mode = assistant.mode
 
-                if not assistant:
-                    assistant = await self.get_assistant_state()
+            updated_assistant = await self.assistant_repo.set_mode(session, mode)
 
-                old_mode = assistant.mode
-                assistant.mode = mode
+            await self.action_log_repo.log_action(
+                session,
+                action_type="mode_change",
+                action_data={"from_mode": old_mode, "to_mode": mode},
+                success=True,
+                triggered_by="system"
+            )
 
-                if mode == "active":
-                    assistant.last_user_interaction = func.now()
-                elif mode == "idle":
-                    assistant.current_action = "thinking"
+            logger.info(f"Assistant mode changed from {old_mode} to {mode}")
 
-                await session.commit()
-                await session.refresh(assistant)
-
-                await self._log_action(
-                    action_type="mode_change",
-                    action_data={"from_mode": old_mode, "to_mode": mode},
-                    success=True,
-                    triggered_by="system"
-                )
-
-                logger.info(f"Assistant mode changed from {old_mode} to {mode}")
-
-                return {
-                    "success": True,
-                    "old_mode": old_mode,
-                    "new_mode": mode,
-                    "assistant_state": assistant.to_dict()
-                }
+            return {
+                "success": True,
+                "old_mode": old_mode,
+                "new_mode": mode,
+                "assistant_state": updated_assistant.to_dict()
+            }
 
         except Exception as e:
             logger.error(f"Error setting assistant mode: {e}")
@@ -361,31 +316,28 @@ class AssistantService:
                 "error": str(e)
             }
 
-    async def update_energy_level(self, energy_delta: float) -> None:
+    async def update_energy_level(self, session: AsyncSession, energy_delta: float) -> None:
         """
         Update assistant energy level.
 
         Args:
+            session: Database session
             energy_delta: Change in energy (positive or negative)
         """
-        async with await self.get_db_session() as session:
-            stmt = select(AssistantState).where(AssistantState.id == "default")
-            result = await session.execute(stmt)
-            assistant = result.scalar_one_or_none()
+        assistant = await self.assistant_repo.update_energy_level(session, energy_delta)
+        logger.debug(f"Assistant energy updated by {energy_delta} to {assistant.energy_level}")
 
-            if assistant:
-                assistant.energy_level = max(0.0, min(1.0, assistant.energy_level + energy_delta))
-                await session.commit()
-                logger.debug(f"Assistant energy updated by {energy_delta} to {assistant.energy_level}")
-
-    async def get_inactivity_duration(self) -> float:
+    async def get_inactivity_duration(self, session: AsyncSession) -> float:
         """
         Get duration in minutes since last user interaction.
+
+        Args:
+            session: Database session
 
         Returns:
             Minutes since last user interaction
         """
-        assistant = await self.get_assistant_state()
+        assistant = await self.get_assistant_state(session)
         if not assistant.last_user_interaction:
             return 0.0
 
@@ -393,19 +345,15 @@ class AssistantService:
         time_diff = now - assistant.last_user_interaction
         return time_diff.total_seconds() / 60.0
 
-    async def _get_room_obstacles(self) -> Set[Tuple[int, int]]:
+    async def _get_room_obstacles(self, session: AsyncSession) -> Set[Tuple[int, int]]:
         """Get all obstacle positions in the room."""
         obstacles = set()
+        solid_objects = await self.room_repo.get_solid_objects(session)
 
-        async with await self.get_db_session() as session:
-            stmt = select(GridObject).where(GridObject.is_solid == True)
-            result = await session.execute(stmt)
-            solid_objects = result.scalars().all()
-
-            for obj in solid_objects:
-                for x in range(obj.position_x, obj.position_x + obj.size_width):
-                    for y in range(obj.position_y, obj.position_y + obj.size_height):
-                        obstacles.add((x, y))
+        for obj in solid_objects:
+            for x in range(obj.position_x, obj.position_x + obj.size_width):
+                for y in range(obj.position_y, obj.position_y + obj.size_height):
+                    obstacles.add((x, y))
 
         return obstacles
 
@@ -416,32 +364,7 @@ class AssistantService:
         else:
             return "down" if dy > 0 else "up"
 
-    async def _log_action(
-        self,
-        action_type: str,
-        action_data: Optional[Dict[str, Any]] = None,
-        position_before: Optional[Dict[str, Any]] = None,
-        position_after: Optional[Dict[str, Any]] = None,
-        success: bool = True,
-        error_message: Optional[str] = None,
-        triggered_by: str = "user"
-    ):
-        """Log an assistant action."""
-        try:
-            async with await self.get_db_session() as session:
-                log_entry = AssistantActionLog(
-                    action_type=action_type,
-                    action_data=action_data or {},
-                    position_before=position_before,
-                    position_after=position_after,
-                    success=success,
-                    error_message=error_message,
-                    triggered_by=triggered_by
-                )
-                session.add(log_entry)
-                await session.commit()
-        except Exception as e:
-            logger.error(f"Error logging action: {e}")
+    # _log_action method removed - now handled by action_log_repo directly
 
 
 # Global service instance

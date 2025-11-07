@@ -139,7 +139,6 @@ class DatabaseConnectionManager:
                 max_overflow=20,
                 pool_pre_ping=True,  # Validates connections before use
                 pool_recycle=3600,   # Recycle connections after 1 hour
-                echo=False,          # Disable SQL logging in production
                 **self.engine_kwargs
             )
 

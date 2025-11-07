@@ -9,11 +9,13 @@ Provides endpoints for:
 """
 
 from typing import List, Dict, Any
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, Depends
 from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
 from ..services.room_service import room_service
+from ..dependencies.database import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +23,10 @@ router = APIRouter(prefix="/room", tags=["room"])
 
 
 @router.get("/objects", response_model=List[Dict[str, Any]])
-async def get_room_objects():
+async def get_room_objects(db: AsyncSession = Depends(get_db)):
     """Get all objects currently in the room."""
     try:
-        objects = await room_service.get_all_objects()
+        objects = await room_service.get_all_objects(db)
         return objects
     except Exception as e:
         logger.error(f"Error getting room objects: {e}")
@@ -32,10 +34,10 @@ async def get_room_objects():
 
 
 @router.get("/objects/{object_id}", response_model=Dict[str, Any])
-async def get_object(object_id: str):
+async def get_object(object_id: str, db: AsyncSession = Depends(get_db)):
     """Get a specific object by ID."""
     try:
-        obj = await room_service.get_object_by_id(object_id)
+        obj = await room_service.get_object_by_id(db, object_id)
         if not obj:
             raise HTTPException(status_code=404, detail=f"Object {object_id} not found")
         return obj
@@ -47,10 +49,10 @@ async def get_object(object_id: str):
 
 
 @router.post("/objects", response_model=Dict[str, Any])
-async def create_object(object_data: Dict[str, Any] = Body(...)):
+async def create_object(object_data: Dict[str, Any] = Body(...), db: AsyncSession = Depends(get_db)):
     """Create a new object in the room."""
     try:
-        obj = await room_service.create_object(object_data)
+        obj = await room_service.create_object(db, object_data)
         return obj
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -60,13 +62,13 @@ async def create_object(object_data: Dict[str, Any] = Body(...)):
 
 
 @router.put("/objects/{object_id}/move")
-async def move_object(object_id: str, position: Dict[str, int] = Body(...)):
+async def move_object(object_id: str, position: Dict[str, int] = Body(...), db: AsyncSession = Depends(get_db)):
     """Move an object to a new position."""
     try:
         if "x" not in position or "y" not in position:
             raise ValueError("Position must include x and y coordinates")
 
-        obj = await room_service.move_object(object_id, position["x"], position["y"])
+        obj = await room_service.move_object(db, object_id, position["x"], position["y"])
         return obj
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -76,10 +78,10 @@ async def move_object(object_id: str, position: Dict[str, int] = Body(...)):
 
 
 @router.delete("/objects/{object_id}")
-async def delete_object(object_id: str):
+async def delete_object(object_id: str, db: AsyncSession = Depends(get_db)):
     """Remove an object from the room."""
     try:
-        deleted = await room_service.delete_object(object_id)
+        deleted = await room_service.delete_object(db, object_id)
         if not deleted:
             raise HTTPException(status_code=404, detail=f"Object {object_id} not found")
         return {"message": f"Object {object_id} deleted successfully"}
@@ -93,7 +95,8 @@ async def delete_object(object_id: str):
 @router.put("/objects/{object_id}/state")
 async def set_object_state(
     object_id: str,
-    state_data: Dict[str, str] = Body(...)
+    state_data: Dict[str, str] = Body(...),
+    db: AsyncSession = Depends(get_db)
 ):
     """Set or update an object's state."""
     try:
@@ -102,6 +105,7 @@ async def set_object_state(
 
         updated_by = state_data.get("updated_by", "user")
         success = await room_service.set_object_state(
+            db,
             object_id,
             state_data["key"],
             state_data["value"],
@@ -120,10 +124,10 @@ async def set_object_state(
 
 
 @router.get("/objects/{object_id}/states", response_model=Dict[str, str])
-async def get_object_states(object_id: str):
+async def get_object_states(object_id: str, db: AsyncSession = Depends(get_db)):
     """Get all states for an object."""
     try:
-        states = await room_service.get_object_states(object_id)
+        states = await room_service.get_object_states(db, object_id)
         return states
     except Exception as e:
         logger.error(f"Error getting states for object {object_id}: {e}")
@@ -132,10 +136,10 @@ async def get_object_states(object_id: str):
 
 # Storage Closet Endpoints
 @router.get("/storage", response_model=List[Dict[str, Any]])
-async def get_storage_items():
+async def get_storage_items(db: AsyncSession = Depends(get_db)):
     """Get all items in the storage closet."""
     try:
-        items = await room_service.get_storage_items()
+        items = await room_service.get_storage_items(db)
         return items
     except Exception as e:
         logger.error(f"Error getting storage items: {e}")
@@ -143,10 +147,10 @@ async def get_storage_items():
 
 
 @router.post("/storage", response_model=Dict[str, Any])
-async def add_to_storage(item_data: Dict[str, Any] = Body(...)):
+async def add_to_storage(item_data: Dict[str, Any] = Body(...), db: AsyncSession = Depends(get_db)):
     """Add an item to the storage closet."""
     try:
-        item = await room_service.add_to_storage(item_data)
+        item = await room_service.add_to_storage(db, item_data)
         return item
     except Exception as e:
         logger.error(f"Error adding item to storage: {e}")
@@ -154,13 +158,13 @@ async def add_to_storage(item_data: Dict[str, Any] = Body(...)):
 
 
 @router.post("/storage/{item_id}/place")
-async def place_from_storage(item_id: str, position: Dict[str, int] = Body(...)):
+async def place_from_storage(item_id: str, position: Dict[str, int] = Body(...), db: AsyncSession = Depends(get_db)):
     """Place an item from storage into the room."""
     try:
         if "x" not in position or "y" not in position:
             raise ValueError("Position must include x and y coordinates")
 
-        obj = await room_service.place_from_storage(item_id, position["x"], position["y"])
+        obj = await room_service.place_from_storage(db, item_id, position["x"], position["y"])
         return obj
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -170,10 +174,10 @@ async def place_from_storage(item_id: str, position: Dict[str, int] = Body(...))
 
 
 @router.post("/objects/{object_id}/store")
-async def store_object(object_id: str):
+async def store_object(object_id: str, db: AsyncSession = Depends(get_db)):
     """Move an object from the room to storage."""
     try:
-        item = await room_service.store_object(object_id)
+        item = await room_service.store_object(db, object_id)
         return item
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -184,10 +188,10 @@ async def store_object(object_id: str):
 
 # Utility Endpoints
 @router.post("/initialize")
-async def initialize_room():
+async def initialize_room(db: AsyncSession = Depends(get_db)):
     """Initialize the room with default objects."""
     try:
-        await room_service.initialize_default_objects()
+        await room_service.initialize_default_objects(db)
         return {"message": "Room initialized with default objects"}
     except Exception as e:
         logger.error(f"Error initializing room: {e}")

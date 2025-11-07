@@ -9,10 +9,12 @@ Provides endpoints for:
 """
 
 from typing import Dict, Any, List
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
 from app.services.assistant_service import assistant_service
+from app.dependencies.database import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -143,10 +145,10 @@ async def get_current_assistant():
 
 
 @router.get("/state")
-async def get_assistant_state():
+async def get_assistant_state(db: AsyncSession = Depends(get_db)):
     """Get current assistant state including position, mood, and activity."""
     try:
-        assistant = await assistant_service.get_assistant_state()
+        assistant = await assistant_service.get_assistant_state(db)
         return assistant.to_dict()
     except Exception as e:
         logger.error(f"Error getting assistant state: {e}")
@@ -154,7 +156,7 @@ async def get_assistant_state():
 
 
 @router.put("/position")
-async def update_assistant_position(position_data: Dict[str, Any] = Body(...)):
+async def update_assistant_position(position_data: Dict[str, Any] = Body(...), db: AsyncSession = Depends(get_db)):
     """
     Update assistant position directly.
 
@@ -178,7 +180,7 @@ async def update_assistant_position(position_data: Dict[str, Any] = Body(...)):
         if not (0 <= x < 64 and 0 <= y < 16):
             raise HTTPException(status_code=400, detail="Position must be within grid bounds (0-63, 0-15)")
 
-        result = await assistant_service.update_assistant_position(x, y, facing, action)
+        result = await assistant_service.update_assistant_position(db, x, y, facing, action)
         return result
 
     except HTTPException:
@@ -189,7 +191,7 @@ async def update_assistant_position(position_data: Dict[str, Any] = Body(...)):
 
 
 @router.post("/move")
-async def move_assistant(move_data: Dict[str, Any] = Body(...)):
+async def move_assistant(move_data: Dict[str, Any] = Body(...), db: AsyncSession = Depends(get_db)):
     """
     Move assistant to target position using pathfinding.
 
@@ -212,7 +214,7 @@ async def move_assistant(move_data: Dict[str, Any] = Body(...)):
         if not (0 <= target_x < 64 and 0 <= target_y < 16):
             raise HTTPException(status_code=400, detail="Target position must be within grid bounds")
 
-        result = await assistant_service.move_assistant_to(target_x, target_y, validate_path)
+        result = await assistant_service.move_assistant_to(db, target_x, target_y, validate_path)
         return result
 
     except HTTPException:
@@ -223,7 +225,7 @@ async def move_assistant(move_data: Dict[str, Any] = Body(...)):
 
 
 @router.post("/sit")
-async def sit_on_furniture(sit_data: Dict[str, str] = Body(...)):
+async def sit_on_furniture(sit_data: Dict[str, str] = Body(...), db: AsyncSession = Depends(get_db)):
     """
     Make assistant sit on specified furniture.
 
@@ -238,7 +240,7 @@ async def sit_on_furniture(sit_data: Dict[str, str] = Body(...)):
         if not furniture_id:
             raise HTTPException(status_code=400, detail="Furniture ID is required")
 
-        result = await assistant_service.sit_on_furniture(furniture_id)
+        result = await assistant_service.sit_on_furniture(db, furniture_id)
         return result
 
     except HTTPException:
@@ -249,16 +251,16 @@ async def sit_on_furniture(sit_data: Dict[str, str] = Body(...)):
 
 
 @router.get("/reachable")
-async def get_reachable_positions():
+async def get_reachable_positions(db: AsyncSession = Depends(get_db)):
     """Get all positions reachable by the assistant from current location."""
     try:
-        reachable = await assistant_service.get_reachable_positions()
+        reachable = await assistant_service.get_reachable_positions(db)
 
         # Convert set of tuples to list of dictionaries
         reachable_list = [{"x": x, "y": y} for x, y in reachable]
 
         return {
-            "current_position": (await assistant_service.get_assistant_state()).to_dict()["position"],
+            "current_position": (await assistant_service.get_assistant_state(db)).to_dict()["position"],
             "reachable_positions": reachable_list,
             "count": len(reachable_list)
         }
@@ -269,7 +271,7 @@ async def get_reachable_positions():
 
 
 @router.post("/pathfind")
-async def find_path_to_position(path_data: Dict[str, Any] = Body(...)):
+async def find_path_to_position(path_data: Dict[str, Any] = Body(...), db: AsyncSession = Depends(get_db)):
     """
     Find path from current position to target without moving.
 
@@ -280,7 +282,6 @@ async def find_path_to_position(path_data: Dict[str, Any] = Body(...)):
     """
     try:
         from app.services.multi_room_pathfinding import multi_room_pathfinding_service
-        from app.database import get_db
 
         target = path_data.get("target")
         if not target or "x" not in target or "y" not in target:
@@ -291,25 +292,23 @@ async def find_path_to_position(path_data: Dict[str, Any] = Body(...)):
             raise HTTPException(status_code=400, detail="Target position must be within grid bounds")
 
         # Get current assistant position
-        assistant = await assistant_service.get_assistant_state()
+        assistant = await assistant_service.get_assistant_state(db)
         start_pos = (assistant.position_x, assistant.position_y)
         target_pos = (target_x, target_y)
 
         # Get obstacles
-        obstacles = await assistant_service._get_room_obstacles()
+        obstacles = await assistant_service._get_room_obstacles(db)
 
         # Find path using multi-room pathfinding
-        async for db_session in get_db():
-            path_result = multi_room_pathfinding_service.find_multi_room_path(
-                db=db_session,
-                floor_plan_id=assistant.current_floor_plan_id or "studio_apartment",
-                start_pos=(float(assistant.position_x), float(assistant.position_y)),
-                start_room_id=assistant.current_room_id or "main_room",
-                goal_pos=(float(target_x), float(target_y)),
-                goal_room_id=assistant.current_room_id or "main_room"
-            )
-            path = path_result.get("path", [])
-            break
+        path_result = multi_room_pathfinding_service.find_multi_room_path(
+            db=db,
+            floor_plan_id=assistant.current_floor_plan_id or "studio_apartment",
+            start_pos=(float(assistant.position_x), float(assistant.position_y)),
+            start_room_id=assistant.current_room_id or "main_room",
+            goal_pos=(float(target_x), float(target_y)),
+            goal_room_id=assistant.current_room_id or "main_room"
+        )
+        path = path_result.get("path", [])
 
         return {
             "start": {"x": start_pos[0], "y": start_pos[1]},
@@ -327,24 +326,18 @@ async def find_path_to_position(path_data: Dict[str, Any] = Body(...)):
 
 
 @router.get("/actions/log")
-async def get_action_log(limit: int = 50):
+async def get_action_log(limit: int = 50, db: AsyncSession = Depends(get_db)):
     """Get recent assistant action log for debugging."""
     try:
-        from sqlalchemy import select
-        from app.models.assistant import AssistantActionLog
-        from app.db.database import AsyncSessionLocal
+        from app.repositories.assistant_repository import AssistantActionLogRepository
 
-        async with AsyncSessionLocal() as session:
-            stmt = select(AssistantActionLog).order_by(
-                AssistantActionLog.created_at.desc()
-            ).limit(limit)
-            result = await session.execute(stmt)
-            actions = result.scalars().all()
+        action_log_repo = AssistantActionLogRepository()
+        actions = await action_log_repo.get_recent_actions(db, limit)
 
-            return {
-                "actions": [action.to_dict() for action in actions],
-                "count": len(actions)
-            }
+        return {
+            "actions": [action.to_dict() for action in actions],
+            "count": len(actions)
+        }
 
     except Exception as e:
         logger.error(f"Error getting action log: {e}")
@@ -391,7 +384,7 @@ async def pick_up_object(object_id: str):
 
 
 @router.post("/put-down")
-async def put_down_object(put_down_data: Dict[str, Any] = Body(None)):
+async def put_down_object(put_down_data: Dict[str, Any] = Body(None), db: AsyncSession = Depends(get_db)):
     """
     Put down the currently held object.
 
@@ -407,7 +400,7 @@ async def put_down_object(put_down_data: Dict[str, Any] = Body(None)):
         from app.services.action_executor import action_executor
 
         # Get assistant state to check if holding something
-        assistant = await assistant_service.get_assistant_state()
+        assistant = await assistant_service.get_assistant_state(db)
         if not assistant.holding_object_id:
             raise HTTPException(status_code=400, detail="Not holding any object")
 
@@ -444,7 +437,7 @@ async def put_down_object(put_down_data: Dict[str, Any] = Body(None)):
 
 
 @router.get("/holding")
-async def get_holding_status():
+async def get_holding_status(db: AsyncSession = Depends(get_db)):
     """
     Get information about what object the assistant is currently holding.
 
@@ -458,7 +451,7 @@ async def get_holding_status():
     try:
         from app.services.room_service import room_service
 
-        assistant = await assistant_service.get_assistant_state()
+        assistant = await assistant_service.get_assistant_state(db)
         holding_object_id = assistant.holding_object_id
 
         if not holding_object_id:
@@ -469,7 +462,7 @@ async def get_holding_status():
             }
 
         # Get object details
-        objects = await room_service.get_all_objects()
+        objects = await room_service.get_all_objects(db)
         held_object = next((obj for obj in objects if obj["id"] == holding_object_id), None)
 
         return {
@@ -486,14 +479,14 @@ async def get_holding_status():
 # ============= IDLE MODE ENDPOINTS =============
 
 @router.get("/mode")
-async def get_assistant_mode():
+async def get_assistant_mode(db: AsyncSession = Depends(get_db)):
     """Get current assistant mode (active/idle)."""
     try:
-        assistant = await assistant_service.get_assistant_state()
+        assistant = await assistant_service.get_assistant_state(db)
         return {
             "mode": assistant.mode,
             "last_user_interaction": assistant.last_user_interaction.isoformat() if assistant.last_user_interaction else None,
-            "inactivity_duration_minutes": await assistant_service.get_inactivity_duration(),
+            "inactivity_duration_minutes": await assistant_service.get_inactivity_duration(db),
             "current_action": assistant.current_action,
             "energy_level": assistant.energy_level
         }
@@ -503,7 +496,7 @@ async def get_assistant_mode():
 
 
 @router.put("/mode")
-async def set_assistant_mode(mode_data: Dict[str, Any] = Body(...)):
+async def set_assistant_mode(mode_data: Dict[str, Any] = Body(...), db: AsyncSession = Depends(get_db)):
     """
     Set assistant mode.
 
@@ -517,7 +510,7 @@ async def set_assistant_mode(mode_data: Dict[str, Any] = Body(...)):
         if mode not in ["active", "idle"]:
             raise HTTPException(status_code=400, detail="Mode must be 'active' or 'idle'")
 
-        result = await assistant_service.set_assistant_mode(mode)
+        result = await assistant_service.set_assistant_mode(db, mode)
 
         if not result["success"]:
             raise HTTPException(status_code=400, detail=result["error"])
