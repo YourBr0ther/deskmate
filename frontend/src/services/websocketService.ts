@@ -15,10 +15,12 @@ import { Position } from '../utils/coordinateSystem';
 
 // Inbound events (from server)
 export interface WebSocketInboundEvents {
-  // Connection events
+  // Connection events - matches backend websocket.py
   connection_established: {
+    message: string;
     current_model: string;
-    session_id: string;
+    provider: string;
+    conversation_id: string;
   };
 
   // Chat events
@@ -45,17 +47,38 @@ export interface WebSocketInboundEvents {
     message: string;
   };
 
-  // Assistant state events
+  // Assistant state events - matches backend AssistantState.to_dict() structure
   assistant_state: {
-    position?: Position;
-    status?: {
-      mode: 'active' | 'idle';
+    id: string;
+    location: {
+      floor_plan_id: string | null;
+      room_id: string | null;
+      position: { x: number; y: number };
+      facing: string;
+      facing_angle: number;
+    };
+    movement: {
+      is_moving: boolean;
+      target: { x: number; y: number; room_id: string | null } | null;
+      path: any[] | null;
+      speed: number;
+    };
+    status: {
       action: string;
       mood: string;
-      energy_level?: number;
+      expression: string;
+      energy: number;
+      mode: string;
+      attention: number;
     };
-    holding_object_id?: string | null;
-    sitting_on_object_id?: string | null;
+    interaction: {
+      holding: string | null;
+      sitting_on: string | null;
+      interacting_with: string | null;
+    };
+    goals?: any[];
+    working_memory?: any[];
+    timestamps?: Record<string, string | null>;
   };
 
   assistant_typing: {
@@ -129,6 +152,33 @@ export interface WebSocketInboundEvents {
   pong: {
     timestamp: number;
   };
+
+  // Idle mode events
+  idle_status: {
+    mode: string;
+    last_user_interaction: string;
+    inactivity_duration_minutes: number;
+    idle_timeout_minutes: number;
+    is_idle_enabled: boolean;
+  };
+
+  dreams: {
+    dreams: Array<{
+      id: string;
+      content: string;
+      action_type: string;
+      created_at: string;
+    }>;
+    limit: number;
+    hours_back: number;
+  };
+
+  // State update (response to get_state request)
+  state_update: {
+    assistant: WebSocketInboundEvents['assistant_state'];
+    model: string;
+    provider: string;
+  };
 }
 
 // Outbound events (to server)
@@ -184,6 +234,16 @@ export interface WebSocketOutboundEvents {
   ping: {
     timestamp: number;
   };
+
+  // Idle mode control
+  idle_command: {
+    command: 'force_idle' | 'force_active' | 'get_status' | 'get_dreams';
+    limit?: number;
+    hours_back?: number;
+  };
+
+  // State request
+  get_state: Record<string, never>;  // Empty object
 }
 
 // ============================================================================
@@ -230,7 +290,10 @@ export class TypedWebSocketService {
       storage_item_placed: this.handleStorageItemPlaced.bind(this),
       model_changed: this.handleModelChanged.bind(this),
       error: this.handleError.bind(this),
-      pong: this.handlePong.bind(this)
+      pong: this.handlePong.bind(this),
+      idle_status: this.handleIdleStatus.bind(this),
+      dreams: this.handleDreams.bind(this),
+      state_update: this.handleStateUpdate.bind(this)
     };
   }
 
@@ -343,7 +406,8 @@ export class TypedWebSocketService {
 
   private handleConnectionEstablished(data: WebSocketInboundEvents['connection_established']): void {
     const chatStore = useChatStore.getState();
-    chatStore.updateCurrentModel(data.current_model, 'ollama'); // Default to ollama
+    chatStore.updateCurrentModel(data.current_model, data.provider as 'nano_gpt' | 'ollama');
+    console.log(`WebSocket connected: ${data.message} (conversation: ${data.conversation_id})`);
   }
 
   private handleChatMessage(data: WebSocketInboundEvents['chat_message']): void {
@@ -368,7 +432,8 @@ export class TypedWebSocketService {
 
     if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
       chatStore.updateMessage(lastMessage.id, {
-        content: data.full_content
+        content: data.full_content,
+        isStreaming: !data.done  // Mark as complete when done=true
       });
     } else {
       // Create new streaming message
@@ -376,7 +441,7 @@ export class TypedWebSocketService {
         role: 'assistant',
         content: data.content,
         timestamp: new Date().toISOString(),
-        isStreaming: true
+        isStreaming: !data.done  // May be complete on first message if short
       });
     }
   }
@@ -403,28 +468,40 @@ export class TypedWebSocketService {
   private handleAssistantState(data: WebSocketInboundEvents['assistant_state']): void {
     const spatialStore = useSpatialStore.getState();
 
-    if (data.position) {
-      spatialStore.setAssistantPosition(data.position);
+    // Extract position from nested location object
+    if (data.location?.position) {
+      spatialStore.setAssistantPosition(data.location.position);
     }
 
+    // Extract and map status fields
     if (data.status) {
       spatialStore.setAssistantStatus({
         status: data.status.mode === 'active' ? 'active' : 'idle',
         mood: data.status.mood as any,
         current_action: data.status.action,
-        energy_level: data.status.energy_level || 0.8
+        energy_level: data.status.energy  // Backend uses "energy", frontend uses "energy_level"
       });
     }
 
-    if (data.holding_object_id !== undefined) {
+    // Extract interaction fields from nested object
+    if (data.interaction) {
       spatialStore.setAssistantStatus({
-        holding_object_id: data.holding_object_id
+        holding_object_id: data.interaction.holding,
+        sitting_on_object_id: data.interaction.sitting_on
       });
     }
 
-    if (data.sitting_on_object_id !== undefined) {
+    // Handle movement state
+    if (data.movement) {
       spatialStore.setAssistantStatus({
-        sitting_on_object_id: data.sitting_on_object_id
+        isMoving: data.movement.is_moving
+      });
+    }
+
+    // Handle facing direction from location
+    if (data.location?.facing) {
+      spatialStore.setAssistantStatus({
+        facing: data.location.facing as 'up' | 'down' | 'left' | 'right'
       });
     }
   }
@@ -549,6 +626,44 @@ export class TypedWebSocketService {
   private handlePong(data: WebSocketInboundEvents['pong']): void {
     // Handle ping/pong for connection keep-alive
     console.debug('Received pong:', data.timestamp);
+  }
+
+  private handleIdleStatus(data: WebSocketInboundEvents['idle_status']): void {
+    console.log('Idle status received:', data);
+    const spatialStore = useSpatialStore.getState();
+
+    // Update assistant mode based on idle status
+    spatialStore.setAssistantStatus({
+      status: data.mode === 'active' ? 'active' : 'idle'
+    });
+  }
+
+  private handleDreams(data: WebSocketInboundEvents['dreams']): void {
+    console.log(`Dreams received: ${data.dreams.length} dreams from last ${data.hours_back} hours`);
+
+    // Optionally add dream summaries as system messages
+    if (data.dreams.length > 0) {
+      const chatStore = useChatStore.getState();
+      const dreamSummary = data.dreams
+        .slice(0, 3)  // Show first 3 dreams
+        .map(d => `- ${d.content}`)
+        .join('\n');
+
+      chatStore.addMessage({
+        role: 'system',
+        content: `Recent dreams while idle:\n${dreamSummary}`,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  private handleStateUpdate(data: WebSocketInboundEvents['state_update']): void {
+    // Delegate assistant state handling to existing handler
+    this.handleAssistantState(data.assistant);
+
+    // Update model info
+    const chatStore = useChatStore.getState();
+    chatStore.updateCurrentModel(data.model, data.provider as 'nano_gpt' | 'ollama');
   }
 
   // ========================================================================

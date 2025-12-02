@@ -35,7 +35,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             result = await db.execute(select(Model))
             return result.scalars().all()
     """
-    async for session in get_db_session():
+    async with get_db_session() as session:
         try:
             yield session
         except Exception as e:

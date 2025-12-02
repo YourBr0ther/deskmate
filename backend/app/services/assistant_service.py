@@ -40,7 +40,7 @@ class AssistantService:
         """Get current assistant state, creating default if needed."""
         if session is None:
             # Legacy compatibility - create session automatically
-            async for session in get_db_session():
+            async with get_db_session() as session:
                 return await self.assistant_repo.get_default_assistant(session)
         return await self.assistant_repo.get_default_assistant(session)
 
@@ -269,7 +269,7 @@ class AssistantService:
         """Record that user has interacted with the assistant."""
         if session is None:
             # Legacy compatibility - create session automatically
-            async for session in get_db_session():
+            async with get_db_session() as session:
                 await self.assistant_repo.record_user_interaction(session)
                 return
         else:

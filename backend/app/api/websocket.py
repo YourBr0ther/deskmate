@@ -422,11 +422,13 @@ async def handle_chat_message(websocket: WebSocket, data: Dict[str, Any]):
 
         for i, word in enumerate(words):
             current_response += word + " "
+            is_last_word = i == len(words) - 1
             await connection_manager.send_personal_message({
                 "type": "chat_stream",
                 "data": {
                     "content": word + " ",
-                    "full_content": current_response.strip()
+                    "full_content": current_response.strip(),
+                    "done": is_last_word  # Signals stream completion to frontend
                 },
                 "timestamp": datetime.now().isoformat()
             }, websocket)

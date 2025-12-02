@@ -42,7 +42,9 @@ export interface Assistant {
   id: string;
   position: Position;
   isMoving: boolean;
-  mood: 'neutral' | 'happy' | 'curious' | 'tired' | 'focused';
+  // Mood types: backend sends 'happy', 'sad', 'neutral', 'excited', 'tired'
+  // Frontend may also use 'curious', 'focused' for extended states
+  mood: 'neutral' | 'happy' | 'sad' | 'excited' | 'tired' | 'curious' | 'focused';
   status: 'idle' | 'active' | 'moving' | 'interacting';
   facing: 'up' | 'down' | 'left' | 'right';
   sitting_on_object_id: string | null;

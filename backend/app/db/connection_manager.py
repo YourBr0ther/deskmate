@@ -317,8 +317,13 @@ async def init_db_manager(database_url: str, **kwargs) -> None:
     await db_manager.initialize()
 
 
+@asynccontextmanager
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
-    """Get database session from the global connection manager."""
+    """Get database session from the global connection manager.
+
+    This is an async context manager that yields a database session.
+    Usage: async with get_db_session() as session: ...
+    """
     if not db_manager:
         raise ResourceError(
             "Database connection manager not initialized",

@@ -3,7 +3,7 @@ services:
     build: ./frontend
     container_name: deskmate-frontend
     ports:
-      - "3000:80"
+      - "3002:80"  # Use 3002 to avoid conflict with vividpages on 3000
     depends_on:
       - backend
     networks:
@@ -13,7 +13,7 @@ services:
     build: ./backend
     container_name: deskmate-backend
     ports:
-      - "8000:8000"
+      - "8001:8000"  # Use 8001 externally to avoid conflict
     env_file:
       - ./backend/.env
     environment:
@@ -49,7 +49,7 @@ services:
       - POSTGRES_PASSWORD=deskmate
       - POSTGRES_DB=deskmate
     ports:
-      - "5432:5432"
+      - "5433:5432"  # Use 5433 externally to avoid conflict
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
