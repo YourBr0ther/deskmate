@@ -30,13 +30,26 @@ module.exports = {
     '!src/**/*.spec.{ts,tsx}',
   ],
 
-  // Coverage thresholds (adjusted for gradual improvement)
+  // Coverage thresholds (Phase 11 target: 80%)
   coverageThreshold: {
     global: {
-      branches: 50,
-      functions: 50,
-      lines: 50,
-      statements: 50,
+      branches: 80,
+      functions: 80,
+      lines: 80,
+      statements: 80,
+    },
+    // Critical modules require higher coverage
+    './src/stores/': {
+      branches: 85,
+      functions: 90,
+      lines: 90,
+      statements: 90,
+    },
+    './src/hooks/': {
+      branches: 80,
+      functions: 85,
+      lines: 85,
+      statements: 85,
     },
   },
 
