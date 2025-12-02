@@ -6,7 +6,7 @@ import React, { useState, useEffect } from 'react';
 
 import { useChatStore } from '../../stores/chatStore';
 import { usePersonaStore } from '../../stores/personaStore';
-import { useRoomStore } from '../../stores/roomStore';
+import { useSpatialStore } from '../../stores/spatialStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 
 interface PerformanceStats {
@@ -20,7 +20,7 @@ export const DebugOverlay: React.FC = () => {
   const { debugMode } = useSettingsStore();
   const { messages, isConnected, isTyping, currentModel } = useChatStore();
   const { selectedPersona } = usePersonaStore();
-  const { assistant } = useRoomStore();
+  const assistant = useSpatialStore((state) => state.assistant);
 
   const [performanceStats, setPerformanceStats] = useState<PerformanceStats>({
     fps: 0,
@@ -129,7 +129,7 @@ export const DebugOverlay: React.FC = () => {
           <div>Position: <span className="text-green-300">({Math.round(assistant.position.x)}, {Math.round(assistant.position.y)})</span></div>
           <div>Status: <span className="text-blue-300">{assistant.status}</span></div>
           <div>Mood: <span className="text-purple-300">{assistant.mood}</span></div>
-          <div>Action: <span className="text-orange-300">{assistant.currentAction || "idle"}</span></div>
+          <div>Action: <span className="text-orange-300">{assistant.current_action || "idle"}</span></div>
           <div>Moving: <span className={assistant.isMoving ? "text-yellow-300" : "text-gray-300"}>{assistant.isMoving ? "Yes" : "No"}</span></div>
           {assistant.holding_object_id && (
             <div>Holding: <span className="text-yellow-300">{assistant.holding_object_id}</span></div>

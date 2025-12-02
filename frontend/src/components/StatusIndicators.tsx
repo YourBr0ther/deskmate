@@ -4,7 +4,7 @@
 
 import React from 'react';
 
-import { useRoomStore } from '../stores/roomStore';
+import { useSpatialStore } from '../stores/spatialStore';
 
 interface StatusIndicatorsProps {
   compact?: boolean;
@@ -15,7 +15,7 @@ const StatusIndicators: React.FC<StatusIndicatorsProps> = ({
   compact = false,
   className = ""
 }) => {
-  const { assistant } = useRoomStore();
+  const assistant = useSpatialStore((state) => state.assistant);
 
   const getMoodConfig = (mood: string) => {
     switch (mood.toLowerCase()) {
@@ -137,12 +137,12 @@ const StatusIndicators: React.FC<StatusIndicatorsProps> = ({
         </div>
 
         {/* Action indicator */}
-        {assistant.currentAction && (
+        {assistant.current_action && (
           <div
             className="flex items-center justify-center w-8 h-8"
-            title={`Action: ${assistant.currentAction}`}
+            title={`Action: ${assistant.current_action}`}
           >
-            <span className="text-lg">{getActionIcon(assistant.currentAction)}</span>
+            <span className="text-lg">{getActionIcon(assistant.current_action)}</span>
           </div>
         )}
       </div>
@@ -178,13 +178,13 @@ const StatusIndicators: React.FC<StatusIndicatorsProps> = ({
       </div>
 
       {/* Current Action */}
-      {assistant.currentAction && (
+      {assistant.current_action && (
         <div className="p-3 rounded-lg bg-gray-700/30">
           <div className="flex items-center space-x-3">
-            <span className="text-xl">{getActionIcon(assistant.currentAction)}</span>
+            <span className="text-xl">{getActionIcon(assistant.current_action)}</span>
             <div>
               <div className="font-medium text-white">
-                {assistant.currentAction.charAt(0).toUpperCase() + assistant.currentAction.slice(1)}
+                {assistant.current_action.charAt(0).toUpperCase() + assistant.current_action.slice(1)}
               </div>
               <div className="text-sm text-gray-400">Current activity</div>
             </div>

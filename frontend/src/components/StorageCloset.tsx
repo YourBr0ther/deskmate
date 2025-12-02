@@ -2,25 +2,28 @@
  * Storage Closet - Virtual inventory for items not in room
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo } from 'react';
 
-import { useRoomStore } from '../stores/roomStore';
-import { StorageItem, Position } from '../types/room';
+import { useSpatialStore, StorageItem } from '../stores/spatialStore';
 
 const StorageCloset: React.FC = () => {
-  const {
-    storageItems,
-    storageVisible,
-    toggleStorageVisibility,
-    loadStorageItems,
-    placeFromStorage,
-    moveObjectToStorage,
-    objects,
-    selectedStorageItemId,
-    isStoragePlacementActive,
-    startStoragePlacement,
-    clearStoragePlacement
-  } = useRoomStore();
+  // Get state using selectors
+  const storageItemsMap = useSpatialStore((state) => state.entities.storageItems);
+  const objectsMap = useSpatialStore((state) => state.entities.objects);
+  const storageVisible = useSpatialStore((state) => state.ui.storageVisible);
+  const selectedStorageItemId = useSpatialStore((state) => state.ui.selectedStorageItemId);
+  const isStoragePlacementActive = useSpatialStore((state) => state.ui.isStoragePlacementActive);
+
+  // Get actions
+  const toggleStorageVisibility = useSpatialStore((state) => state.toggleStorageVisibility);
+  const loadStorageItems = useSpatialStore((state) => state.loadStorageItems);
+  const moveObjectToStorage = useSpatialStore((state) => state.moveObjectToStorage);
+  const startStoragePlacement = useSpatialStore((state) => state.startStoragePlacement);
+  const clearStoragePlacement = useSpatialStore((state) => state.clearStoragePlacement);
+
+  // Convert maps to arrays
+  const storageItems = useMemo(() => Object.values(storageItemsMap), [storageItemsMap]);
+  const objects = useMemo(() => Object.values(objectsMap), [objectsMap]);
 
   // Load storage items when component mounts
   useEffect(() => {
@@ -126,7 +129,7 @@ const StorageCloset: React.FC = () => {
                     </div>
                   </div>
                   <div className="text-xs text-gray-500">
-                    {item.default_size.width}×{item.default_size.height}
+                    {(item.default_size || item.size)?.width}×{(item.default_size || item.size)?.height}
                   </div>
                 </div>
                 {item.description && (

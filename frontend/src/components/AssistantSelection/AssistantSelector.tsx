@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
 import { usePersonaStore } from '../../stores/personaStore';
-import { useRoomStore } from '../../stores/roomStore';
+import { useSpatialStore } from '../../stores/spatialStore';
 
 interface Assistant {
   id: string;
@@ -38,7 +38,7 @@ export const AssistantSelector: React.FC<AssistantSelectorProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const { personas, selectedPersona, setSelectedPersona, currentExpression, availableExpressions, setPersonaExpression } = usePersonaStore();
-  const { assistant } = useRoomStore();
+  const assistant = useSpatialStore((state) => state.assistant);
 
   // Handle expression changes
   const handleExpressionChange = useCallback(async (expression: string) => {
@@ -415,10 +415,10 @@ export const AssistantSelector: React.FC<AssistantSelectorProps> = ({
               <span className="ml-1 font-medium capitalize">{assistant.mood}</span>
             </div>
 
-            {assistant.currentAction && (
+            {assistant.current_action && (
               <div className="flex items-center text-sm">
                 <span className="text-gray-600">Action:</span>
-                <span className="ml-1 font-medium">{assistant.currentAction}</span>
+                <span className="ml-1 font-medium">{assistant.current_action}</span>
               </div>
             )}
 

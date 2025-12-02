@@ -17,6 +17,8 @@ import { immer } from 'zustand/middleware/immer';
 
 import { api } from '../utils/api';
 import { Position, Size } from '../utils/coordinateSystem';
+import { FloorPlan } from '../types/floorPlan';
+import { gridToPixel } from '../utils/coordinateConversion';
 
 // ============================================================================
 // Type Definitions
@@ -62,8 +64,12 @@ export interface StorageItem {
   name: string;
   type: string;
   size: Size;
+  default_size?: Size;
   properties: Record<string, any>;
   created_at: string;
+  description?: string;
+  usage_count?: number;
+  created_by?: string;
 }
 
 // Normalized state structure
@@ -83,6 +89,16 @@ export interface SpatialUI {
   gridSize: Size;
   isLoading: boolean;
   error: string | null;
+  // Storage UI state (from roomStore)
+  storageVisible: boolean;
+  isStoragePlacementActive: boolean;
+  selectedStorageItemId: string | null;
+}
+
+// Floor plan state (from floorPlanStore)
+export interface FloorPlanState {
+  currentFloorPlan: FloorPlan | null;
+  selectedFloorPlanId: string | null;
 }
 
 // Optimistic update tracking
@@ -98,6 +114,7 @@ export interface SpatialStore {
   entities: SpatialEntities;
   assistant: Assistant;
   ui: SpatialUI;
+  floorPlan: FloorPlanState;
   pendingOps: Record<string, PendingOperation>;
 
   // ========================================================================
@@ -149,6 +166,7 @@ export interface SpatialStore {
   addStorageItem: (item: StorageItem) => void;
   removeStorageItem: (itemId: string) => void;
   placeStorageItem: (itemId: string, position: Position) => Promise<void>;
+  moveObjectToStorage: (objectId: string) => Promise<boolean>;
 
   // ========================================================================
   // UI State Management
@@ -159,6 +177,20 @@ export interface SpatialStore {
   setViewMode: (mode: SpatialUI['viewMode']) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+
+  // Storage UI actions (from roomStore)
+  toggleStorageVisibility: () => void;
+  startStoragePlacement: (itemId: string) => void;
+  clearStoragePlacement: () => void;
+
+  // ========================================================================
+  // Floor Plan Management (from floorPlanStore)
+  // ========================================================================
+
+  setCurrentFloorPlan: (floorPlan: FloorPlan) => void;
+  clearFloorPlan: () => void;
+  loadFloorPlanFromAPI: (floorPlanId: string) => Promise<void>;
+  syncAssistantFromBackend: (backendData: any) => void;
 
   // ========================================================================
   // Optimistic Update Management
@@ -216,7 +248,16 @@ const initialUI: SpatialUI = {
   showGrid: false,
   gridSize: { width: 1920, height: 480 },
   isLoading: false,
-  error: null
+  error: null,
+  // Storage UI state
+  storageVisible: false,
+  isStoragePlacementActive: false,
+  selectedStorageItemId: null
+};
+
+const initialFloorPlan: FloorPlanState = {
+  currentFloorPlan: null,
+  selectedFloorPlanId: null
 };
 
 const initialEntities: SpatialEntities = {
@@ -243,6 +284,7 @@ export const useSpatialStore = create<SpatialStore>()(
       entities: initialEntities,
       assistant: initialAssistant,
       ui: initialUI,
+      floorPlan: initialFloorPlan,
       pendingOps: {},
 
       // ======================================================================
@@ -555,6 +597,41 @@ export const useSpatialStore = create<SpatialStore>()(
         }
       },
 
+      moveObjectToStorage: async (objectId: string) => {
+        const obj = get().entities.objects[objectId];
+        if (!obj) return false;
+
+        try {
+          const response = await fetch(`/api/room/objects/${objectId}/store`, {
+            method: 'POST',
+          });
+
+          if (response.ok) {
+            const storageItem = await response.json();
+
+            // Remove from room objects, add to storage
+            get().removeObject(objectId);
+            get().addStorageItem({
+              id: storageItem.id,
+              name: storageItem.name,
+              type: storageItem.type,
+              size: storageItem.size || storageItem.default_size,
+              properties: storageItem.properties || {},
+              created_at: storageItem.created_at || new Date().toISOString()
+            });
+
+            console.log(`Moved ${storageItem.name} to storage`);
+            return true;
+          } else {
+            console.error('Failed to move object to storage:', response.statusText);
+            return false;
+          }
+        } catch (error) {
+          console.error('Error moving object to storage:', error);
+          return false;
+        }
+      },
+
       // ======================================================================
       // UI State Management
       // ======================================================================
@@ -598,6 +675,106 @@ export const useSpatialStore = create<SpatialStore>()(
       setError: (error: string | null) => {
         set((state) => {
           state.ui.error = error;
+        });
+      },
+
+      // Storage UI actions (from roomStore)
+      toggleStorageVisibility: () => {
+        set((state) => {
+          state.ui.storageVisible = !state.ui.storageVisible;
+        });
+      },
+
+      startStoragePlacement: (itemId: string) => {
+        set((state) => {
+          state.ui.selectedStorageItemId = itemId;
+          state.ui.isStoragePlacementActive = true;
+        });
+      },
+
+      clearStoragePlacement: () => {
+        set((state) => {
+          state.ui.selectedStorageItemId = null;
+          state.ui.isStoragePlacementActive = false;
+        });
+      },
+
+      // ======================================================================
+      // Floor Plan Management (from floorPlanStore)
+      // ======================================================================
+
+      setCurrentFloorPlan: (floorPlan: FloorPlan) => {
+        set((state) => {
+          state.floorPlan.currentFloorPlan = floorPlan;
+          state.floorPlan.selectedFloorPlanId = floorPlan.id;
+          state.ui.error = null;
+        });
+      },
+
+      clearFloorPlan: () => {
+        set((state) => {
+          state.floorPlan.currentFloorPlan = null;
+          state.floorPlan.selectedFloorPlanId = null;
+          state.ui.selectedObjectId = null;
+        });
+      },
+
+      loadFloorPlanFromAPI: async (floorPlanId: string) => {
+        get().setLoading(true);
+        get().setError(null);
+
+        try {
+          const response = await fetch(`/api/floor-plans/${floorPlanId}`);
+
+          if (!response.ok) {
+            throw new Error(`Failed to load floor plan: ${response.statusText}`);
+          }
+
+          const floorPlan: FloorPlan = await response.json();
+          get().setCurrentFloorPlan(floorPlan);
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          get().setError(errorMessage);
+          console.error('Error loading floor plan:', error);
+        } finally {
+          get().setLoading(false);
+        }
+      },
+
+      syncAssistantFromBackend: (backendData: any) => {
+        const state = get();
+        const floorPlan = state.floorPlan.currentFloorPlan;
+
+        if (!backendData.position) return;
+
+        let position = state.assistant.position;
+
+        // Check if backend position looks like grid coordinates (legacy)
+        const isGridPos = backendData.position.x < 64 && backendData.position.y < 16;
+
+        if (isGridPos && floorPlan) {
+          // Convert grid to pixel coordinates
+          position = gridToPixel(
+            { x: backendData.position.x, y: backendData.position.y },
+            floorPlan.dimensions
+          );
+        } else {
+          // Already pixel coordinates
+          position = { x: backendData.position.x, y: backendData.position.y };
+        }
+
+        // Update assistant with converted coordinates and backend status
+        set((state) => {
+          state.assistant.position = position;
+          if (backendData.status?.mode) {
+            state.assistant.status = backendData.status.mode;
+          }
+          if (backendData.status?.action) {
+            state.assistant.current_action = backendData.status.action;
+          }
+          if (backendData.status?.mood) {
+            state.assistant.mood = backendData.status.mood;
+          }
         });
       },
 
@@ -721,9 +898,13 @@ export const useSpatialStore = create<SpatialStore>()(
                   id: item.id,
                   name: item.name,
                   type: item.type,
-                  size: item.size,
+                  size: item.size || item.default_size,
+                  default_size: item.default_size,
                   properties: item.properties || {},
-                  created_at: item.created_at
+                  created_at: item.created_at,
+                  description: item.description,
+                  usage_count: item.usage_count,
+                  created_by: item.created_by
                 };
               });
             });
@@ -794,6 +975,7 @@ export const useSpatialStore = create<SpatialStore>()(
           entities: initialEntities,
           assistant: initialAssistant,
           ui: initialUI,
+          floorPlan: initialFloorPlan,
           pendingOps: {}
         });
       },

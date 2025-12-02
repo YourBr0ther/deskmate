@@ -5,14 +5,13 @@
  * the top-down renderer and the rest of the application.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 
 import TopDownRenderer from './TopDownRenderer';
 import { useDeviceDetection } from '../../hooks/useDeviceDetection';
 import { useChatStore } from '../../stores/chatStore';
-import { useFloorPlanStore } from '../../stores/floorPlanStore';
-import { useRoomStore } from '../../stores/roomStore';
-import { FloorPlan, Assistant, Position } from '../../types/floorPlan';
+import { useSpatialStore } from '../../stores/spatialStore';
+import { FloorPlan, Assistant as FloorPlanAssistant, Position } from '../../types/floorPlan';
 import { logger } from '../../utils/logger';
 
 
@@ -30,26 +29,79 @@ export const FloorPlanContainer: React.FC<FloorPlanContainerProps> = ({
 }) => {
   const deviceInfo = useDeviceDetection();
   const { sendAssistantMove, isConnected } = useChatStore();
-  const {
-    currentFloorPlan,
-    selectedFloorPlanId,
-    assistant,
-    selectedObjectId,
-    isLoading,
-    error,
-    selectObject,
-    updateAssistantPosition,
-    updateFurniturePosition,
-    setCurrentFloorPlan
-  } = useFloorPlanStore();
 
-  // Get storage placement state
-  const {
-    placeFromStorage,
-    isStoragePlacementActive,
-    selectedStorageItemId,
-    clearStoragePlacement
-  } = useRoomStore();
+  // Get state from spatialStore
+  const currentFloorPlan = useSpatialStore((state) => state.floorPlan.currentFloorPlan);
+  const selectedFloorPlanId = useSpatialStore((state) => state.floorPlan.selectedFloorPlanId);
+  const spatialAssistant = useSpatialStore((state) => state.assistant);
+  const selectedObjectId = useSpatialStore((state) => state.ui.selectedObjectId);
+  const isLoading = useSpatialStore((state) => state.ui.isLoading);
+  const error = useSpatialStore((state) => state.ui.error);
+
+  // Get actions from spatialStore
+  const selectObject = useSpatialStore((state) => state.selectObject);
+  const setAssistantPosition = useSpatialStore((state) => state.setAssistantPosition);
+  const setObjectPosition = useSpatialStore((state) => state.setObjectPosition);
+  const setCurrentFloorPlan = useSpatialStore((state) => state.setCurrentFloorPlan);
+
+  // Storage placement state
+  const isStoragePlacementActive = useSpatialStore((state) => state.ui.isStoragePlacementActive);
+  const selectedStorageItemId = useSpatialStore((state) => state.ui.selectedStorageItemId);
+  const clearStoragePlacement = useSpatialStore((state) => state.clearStoragePlacement);
+  const placeStorageItem = useSpatialStore((state) => state.placeStorageItem);
+
+  // Adapt spatialStore assistant to FloorPlan Assistant format for TopDownRenderer
+  const assistant: FloorPlanAssistant | null = useMemo(() => {
+    if (!spatialAssistant) return null;
+
+    // Map current_action string to valid AssistantAction
+    const validActions = ['idle', 'walking', 'sitting', 'talking', 'interacting'] as const;
+    type AssistantAction = typeof validActions[number];
+    const action: AssistantAction = validActions.includes(spatialAssistant.current_action as AssistantAction)
+      ? spatialAssistant.current_action as AssistantAction
+      : 'idle';
+
+    // Map mood to valid AssistantMood (floorPlan types)
+    const validMoods = ['happy', 'sad', 'neutral', 'excited', 'tired', 'confused', 'focused'] as const;
+    type AssistantMood = typeof validMoods[number];
+    const moodMap: Record<string, AssistantMood> = {
+      happy: 'happy',
+      neutral: 'neutral',
+      tired: 'tired',
+      focused: 'focused',
+      curious: 'neutral', // Map 'curious' to 'neutral' as it's not in floorPlan types
+    };
+    const mood: AssistantMood = moodMap[spatialAssistant.mood] || 'neutral';
+
+    return {
+      id: spatialAssistant.id,
+      location: {
+        position: spatialAssistant.position,
+        facing: spatialAssistant.facing || 'right',
+        facing_angle: 0
+      },
+      status: {
+        mood,
+        action,
+        energy_level: spatialAssistant.energy_level,
+        mode: spatialAssistant.status === 'active' ? 'active' : 'idle'
+      }
+    };
+  }, [spatialAssistant]);
+
+  // Wrapper functions to match old API
+  const updateAssistantPosition = useCallback((position: Position) => {
+    setAssistantPosition(position);
+  }, [setAssistantPosition]);
+
+  const updateFurniturePosition = useCallback((objectId: string, position: Position) => {
+    setObjectPosition(objectId, position);
+  }, [setObjectPosition]);
+
+  const placeFromStorage = useCallback(async (itemId: string, position: Position) => {
+    await placeStorageItem(itemId, position);
+    return true;
+  }, [placeStorageItem]);
 
   // Helper function to create default floor plan
   const createDefaultFloorPlan = async (): Promise<FloorPlan> => {

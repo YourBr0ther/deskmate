@@ -437,10 +437,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
         // If it's a create command, refresh storage
         if (result.command === 'create' && result.created_object) {
-          // Import the room store and refresh storage items
-          const { useRoomStore } = await import('./roomStore');
-          const roomStore = useRoomStore.getState();
-          await roomStore.loadStorageItems();
+          // Import the spatial store and refresh storage items
+          const { useSpatialStore } = await import('./spatialStore');
+          const spatialStore = useSpatialStore.getState();
+          await spatialStore.loadStorageItems();
 
           console.log(`Created object: ${result.created_object.name}`);
         }
@@ -542,37 +542,37 @@ function handleWebSocketMessage(message: any) {
       break;
 
     case 'assistant_state':
-      // Handle assistant state updates - update both stores
+      // Handle assistant state updates - update spatialStore
       try {
-        // Update legacy roomStore for backward compatibility
-        import('./roomStore').then(({ useRoomStore }) => {
-          const roomStore = useRoomStore.getState();
+        import('./spatialStore').then(({ useSpatialStore }) => {
+          const spatialStore = useSpatialStore.getState();
 
-          if (data.status) {
-            roomStore.setAssistantStatus(data.status.mode === 'active' ? 'active' : 'idle');
+          // Update assistant status and position
+          const updates: Record<string, any> = {};
+          if (data.status?.mode) {
+            updates.status = data.status.mode === 'active' ? 'active' : 'idle';
           }
           if (data.status?.action) {
-            roomStore.setAssistantAction(data.status.action);
+            updates.current_action = data.status.action;
           }
           if (data.status?.mood) {
-            roomStore.setAssistantMood(data.status.mood);
+            updates.mood = data.status.mood;
           }
           if (data.position) {
-            roomStore.setAssistantPosition({ x: data.position.x, y: data.position.y });
+            updates.position = { x: data.position.x, y: data.position.y };
           }
-        }).catch(error => {
-          console.error('Error updating room store:', error);
-        });
 
-        // Update new FloorPlanStore with coordinate conversion
-        import('./floorPlanStore').then(({ useFloorPlanStore }) => {
-          const floorPlanStore = useFloorPlanStore.getState();
-          floorPlanStore.syncAssistantFromBackend(data);
+          if (Object.keys(updates).length > 0) {
+            spatialStore.setAssistantStatus(updates);
+          }
+
+          // Also sync with backend coordinate conversion if needed
+          spatialStore.syncAssistantFromBackend(data);
         }).catch(error => {
-          console.error('Error updating floor plan store:', error);
+          console.error('Error updating spatial store:', error);
         });
       } catch (error) {
-        console.error('Error importing stores:', error);
+        console.error('Error importing spatial store:', error);
       }
       break;
 
@@ -584,16 +584,18 @@ function handleWebSocketMessage(message: any) {
         timestamp: new Date().toISOString()
       });
 
-      // Update room store assistant status
+      // Update spatial store assistant status
       try {
-        import('./roomStore').then(({ useRoomStore }) => {
-          const roomStore = useRoomStore.getState();
-          roomStore.setAssistantStatus(data.new_mode === 'active' ? 'active' : 'idle');
+        import('./spatialStore').then(({ useSpatialStore }) => {
+          const spatialStore = useSpatialStore.getState();
+          spatialStore.setAssistantStatus({
+            status: data.new_mode === 'active' ? 'active' : 'idle'
+          });
         }).catch(error => {
-          console.error('Error updating mode in room store:', error);
+          console.error('Error updating mode in spatial store:', error);
         });
       } catch (error) {
-        console.error('Error importing room store for mode change:', error);
+        console.error('Error importing spatial store for mode change:', error);
       }
       break;
 

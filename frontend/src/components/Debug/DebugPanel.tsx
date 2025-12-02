@@ -6,7 +6,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
 import { useChatStore } from '../../stores/chatStore';
 import { usePersonaStore } from '../../stores/personaStore';
-import { useRoomStore } from '../../stores/roomStore';
+import { useSpatialStore } from '../../stores/spatialStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 
 interface LogEntry {
@@ -143,7 +143,7 @@ export const DebugPanel: React.FC = () => {
   // State inspection
   const chatState = useChatStore();
   const personaState = usePersonaStore();
-  const roomState = useRoomStore();
+  const spatialState = useSpatialStore();
   const settingsState = useSettingsStore();
 
   const stateData = {
@@ -158,11 +158,13 @@ export const DebugPanel: React.FC = () => {
       selectedPersona: personaState.selectedPersona?.persona.data.name || null,
       availablePersonas: personaState.personas.length
     },
-    room: {
-      assistantPosition: roomState.assistant.position,
-      assistantStatus: roomState.assistant.status,
-      assistantMood: roomState.assistant.mood,
-      objectCount: roomState.objects.length
+    spatial: {
+      assistantPosition: spatialState.assistant.position,
+      assistantStatus: spatialState.assistant.status,
+      assistantMood: spatialState.assistant.mood,
+      objectCount: Object.keys(spatialState.entities.objects).length,
+      currentRoom: spatialState.ui.currentRoomId,
+      floorPlan: spatialState.floorPlan.currentFloorPlan?.name || null
     },
     settings: {
       theme: settingsState.display.theme,

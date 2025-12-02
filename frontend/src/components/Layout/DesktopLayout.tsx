@@ -8,8 +8,7 @@
 import React, { useState, useCallback } from 'react';
 
 import { useLayoutConfig } from '../../hooks/useDeviceDetection';
-import { useFloorPlanStore } from '../../stores/floorPlanStore';
-import { useRoomStore } from '../../stores/roomStore';
+import { useSpatialStore } from '../../stores/spatialStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import DebugOverlay from '../Debug/DebugOverlay';
 import DebugPanel from '../Debug/DebugPanel';
@@ -30,9 +29,10 @@ interface DesktopLayoutProps {
  */
 export const DesktopLayout: React.FC<DesktopLayoutProps> = ({ children }) => {
   const layoutConfig = useLayoutConfig();
-  const { currentFloorPlan } = useFloorPlanStore();
+  const currentFloorPlan = useSpatialStore((state) => state.floorPlan.currentFloorPlan);
+  const storageVisible = useSpatialStore((state) => state.ui.storageVisible);
+  const toggleStorageVisibility = useSpatialStore((state) => state.toggleStorageVisibility);
   const { openSettings } = useSettingsStore();
-  const { toggleStorageVisibility, storageVisible } = useRoomStore();
   const [sidebarWidth, setSidebarWidth] = useState(30); // Percentage
   const [isResizing, setIsResizing] = useState(false);
   const [showFloorPlanOptions, setShowFloorPlanOptions] = useState(false);

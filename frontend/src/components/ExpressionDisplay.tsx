@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 import { usePersonaStore } from '../stores/personaStore';
-import { useRoomStore } from '../stores/roomStore';
+import { useSpatialStore } from '../stores/spatialStore';
 import { useSettingsStore } from '../stores/settingsStore';
 
 interface ExpressionDisplayProps {
@@ -20,7 +20,7 @@ const ExpressionDisplay: React.FC<ExpressionDisplayProps> = ({
   className = ""
 }) => {
   const { selectedPersona, currentExpression } = usePersonaStore();
-  const { assistant } = useRoomStore();
+  const assistant = useSpatialStore((state) => state.assistant);
   const { display } = useSettingsStore();
 
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -206,10 +206,10 @@ const ExpressionDisplay: React.FC<ExpressionDisplayProps> = ({
         />
 
         {/* Activity indicator */}
-        {assistant.currentAction && assistant.currentAction !== 'idle' && (
+        {assistant.current_action && assistant.current_action !== 'idle' && (
           <div
             className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"
-            title={`Activity: ${assistant.currentAction}`}
+            title={`Activity: ${assistant.current_action}`}
           />
         )}
       </div>
