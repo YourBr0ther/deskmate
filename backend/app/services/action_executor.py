@@ -457,8 +457,8 @@ class ActionExecutor:
             wrapped_exception = wrap_exception(e, {
                 "context": "execute_state_change",
                 "target": target,
-                "property": property_name,
-                "value": new_value
+                "property": state_key,
+                "value": state_value
             })
             logger.error(f"Unexpected error in state change: {wrapped_exception.message}",
                         extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details})
@@ -569,7 +569,7 @@ class ActionExecutor:
             # Wrap unknown exceptions for better error tracking
             wrapped_exception = wrap_exception(e, {
                 "context": "execute_pick_up",
-                "object_id": object_id
+                "object_id": target
             })
             logger.error(f"Unexpected error in pick up: {wrapped_exception.message}",
                         extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details})
@@ -722,7 +722,7 @@ class ActionExecutor:
             # Wrap unknown exceptions for better error tracking
             wrapped_exception = wrap_exception(e, {
                 "context": "execute_put_down",
-                "position": {"x": x, "y": y} if x is not None and y is not None else None
+                "position": {"x": target_x, "y": target_y} if target_x is not None and target_y is not None else None
             })
             logger.error(f"Unexpected error in put down: {wrapped_exception.message}",
                         extra={"error_code": wrapped_exception.error_code, "details": wrapped_exception.details})
