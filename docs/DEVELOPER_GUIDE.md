@@ -526,11 +526,16 @@ class ConversationMemory:
 ```
 frontend/src/
 ├── components/
-│   ├── Grid/
-│   │   ├── Grid.tsx           # Main room grid
-│   │   ├── GridCell.tsx       # Individual grid cell
-│   │   ├── Assistant.tsx      # Assistant representation
-│   │   └── RoomObject.tsx     # Room objects
+│   ├── FloorPlan/
+│   │   ├── FloorPlanContainer.tsx  # Floor plan wrapper
+│   │   ├── TopDownRenderer.tsx     # SVG-based room rendering
+│   │   ├── FloorPlanSelector.tsx   # Floor plan selection
+│   │   └── MobileFloorPlan.tsx     # Mobile-specific view
+│   ├── Layout/
+│   │   ├── DesktopLayout.tsx       # Desktop layout (70/30 split)
+│   │   ├── TabletLayout.tsx        # Tablet layout
+│   │   ├── MobileLayout.tsx        # Mobile layout with floating chat
+│   │   └── FloorPlanLayout.tsx     # Base layout component
 │   ├── Chat/
 │   │   ├── ChatWindow.tsx     # Main chat interface
 │   │   ├── MessageList.tsx    # Message history
@@ -540,14 +545,17 @@ frontend/src/
 │   │   └── SettingsPanel.tsx  # Configuration UI
 │   └── TimeDisplay.tsx        # Real-time clock
 ├── stores/
-│   ├── roomStore.ts           # Room state management
+│   ├── spatialStore.ts        # Unified state (rooms, objects, assistant)
 │   ├── chatStore.ts           # Chat state management
 │   ├── personaStore.ts        # Persona management
 │   └── settingsStore.ts       # User settings
 ├── hooks/
-│   ├── useWebSocket.ts        # WebSocket communication
-│   ├── useAssistantAnimation.ts # Movement animations
-│   └── usePersona.ts          # Persona management
+│   ├── useWebSocketIntegration.ts  # WebSocket communication
+│   ├── useAssistantAnimation.ts    # Movement animations
+│   ├── useRoomNavigation.ts        # Multi-room navigation
+│   ├── useDeviceDetection.ts       # Device type detection
+│   ├── useFloorPlanManager.ts      # Floor plan state
+│   └── useTouchGestures.ts         # Touch gesture handling
 ├── types/
 │   ├── room.ts               # Room-related types
 │   ├── chat.ts               # Chat types
@@ -559,111 +567,81 @@ frontend/src/
 
 ### State Management with Zustand
 
-#### Room Store
+#### Spatial Store (Unified State Management)
 ```typescript
-// stores/roomStore.ts
-interface RoomState {
-  // Grid configuration
-  gridSize: { width: number; height: number };
-  cellSize: { width: number; height: number };
+// stores/spatialStore.ts
+interface SpatialState {
+  // Floor plan data
+  currentFloorPlan: FloorPlan | null;
+  rooms: Room[];
 
   // Room entities
-  objects: GridObject[];
-  assistant: Assistant;
+  furniture: FurnitureItem[];
+  assistant: AssistantState;
+  storageItems: StorageItem[];
 
   // Interaction state
-  selectedObject: string | null;
-  draggedObject: string | null;
+  selectedFurnitureId: string | null;
+  hoveredRoomId: string | null;
 
   // Actions
-  setAssistantPosition: (position: Position) => void;
-  moveAssistant: (targetPosition: Position) => void;
-  addObject: (object: GridObject) => void;
-  updateObject: (objectId: string, updates: Partial<GridObject>) => void;
-  selectObject: (objectId?: string) => void;
+  setFloorPlan: (floorPlan: FloorPlan) => void;
+  setAssistant: (assistant: Partial<AssistantState>) => void;
+  updateFurniture: (id: string, updates: Partial<FurnitureItem>) => void;
+  addFurniture: (furniture: FurnitureItem) => void;
+  removeFurniture: (id: string) => void;
 
-  // API integration
-  loadObjectsFromAPI: () => Promise<void>;
-  moveAssistantToPosition: (x: number, y: number) => Promise<boolean>;
-  setObjectState: (objectId: string, key: string, value: string) => Promise<boolean>;
+  // Navigation
+  navigateToRoom: (roomId: string) => void;
+  transitionThroughDoorway: (doorwayId: string) => void;
 }
 
-export const useRoomStore = create<RoomState>()(
-  persist(
-    (set, get) => ({
-      // Initial state
-      gridSize: { width: 64, height: 16 },
-      cellSize: { width: 20, height: 30 },
-      objects: [],
-      assistant: {
-        position: { x: 32, y: 8 },
-        facing: "right",
-        currentAction: "idle",
-        mood: "neutral",
-        expression: "neutral.png",
-        mode: "active",
-        energy: 0.8,
-        holding_object_id: null,
-        sitting_on_object_id: null,
-        status: "idle"
-      },
-      selectedObject: null,
-      draggedObject: null,
+export const useSpatialStore = create<SpatialState>()(
+  immer((set, get) => ({
+    // Initial state
+    currentFloorPlan: null,
+    rooms: [],
+    furniture: [],
+    assistant: {
+      position: { x: 400, y: 300 },  // Continuous coordinates
+      facing: 'right',
+      currentAction: 'idle',
+      mood: 'neutral',
+      expression: 'neutral.png',
+      mode: 'active',
+      energy: 0.8,
+      holdingObjectId: null,
+      sittingOnObjectId: null,
+      currentRoomId: null,
+    },
+    storageItems: [],
+    selectedFurnitureId: null,
+    hoveredRoomId: null,
 
-      // Actions
-      setAssistantPosition: (position) =>
-        set((state) => ({
-          assistant: { ...state.assistant, position }
-        })),
+    // Actions
+    setFloorPlan: (floorPlan) =>
+      set((state) => {
+        state.currentFloorPlan = floorPlan;
+        state.rooms = floorPlan.rooms;
+        state.furniture = floorPlan.furniture;
+      }),
 
-      moveAssistant: (targetPosition) =>
-        set((state) => ({
-          assistant: {
-            ...state.assistant,
-            targetPosition,
-            isMoving: true
-          }
-        })),
+    setAssistant: (updates) =>
+      set((state) => {
+        Object.assign(state.assistant, updates);
+      }),
 
-      // API integration
-      loadObjectsFromAPI: async () => {
-        try {
-          const response = await fetch('/api/room/objects');
-          const { objects } = await response.json();
-          set({ objects });
-        } catch (error) {
-          console.error('Failed to load objects:', error);
-        }
-      },
+    updateFurniture: (id, updates) =>
+      set((state) => {
+        const item = state.furniture.find(f => f.id === id);
+        if (item) Object.assign(item, updates);
+      }),
 
-      moveAssistantToPosition: async (x, y) => {
-        try {
-          const response = await fetch('/api/assistant/move', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ x, y })
-          });
-
-          if (response.ok) {
-            get().setAssistantPosition({ x, y });
-            return true;
-          }
-          return false;
-        } catch (error) {
-          console.error('Move failed:', error);
-          return false;
-        }
-      }
-    }),
-    {
-      name: 'deskmate-room-state',
-      partialize: (state) => ({
-        // Only persist non-dynamic state
-        gridSize: state.gridSize,
-        cellSize: state.cellSize
-      })
-    }
-  )
+    navigateToRoom: (roomId) =>
+      set((state) => {
+        state.assistant.currentRoomId = roomId;
+      }),
+  }))
 );
 ```
 
@@ -774,101 +752,76 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
 ### Component Development
 
-#### Grid Component with Interactions
+#### TopDownRenderer (SVG Floor Plan)
 ```typescript
-// components/Grid/Grid.tsx
-const Grid: React.FC = () => {
-  const {
-    gridSize,
-    cellSize,
-    objects,
-    assistant,
-    getGridMap,
-    selectObject,
-    selectedObject,
-    moveAssistantToPosition,
-    draggedObject,
-    setDraggedObject,
-    moveObjectToPosition
-  } = useRoomStore();
+// components/FloorPlan/TopDownRenderer.tsx
+const TopDownRenderer: React.FC<TopDownRendererProps> = ({
+  floorPlan,
+  assistant,
+  furniture,
+  onFurnitureClick,
+  onPositionClick,
+  deviceType
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [viewBox, setViewBox] = useState('0 0 1200 800');
 
-  const { sendAssistantMove, isConnected } = useChatStore();
-
-  const gridMap = useMemo(() => getGridMap(), [getGridMap]);
-
-  const handleCellClick = useCallback(async (position: Position) => {
-    // Handle object dragging
-    if (draggedObject) {
-      const success = await moveObjectToPosition(draggedObject, position);
-      if (success) {
-        console.log(`Moved object to (${position.x}, ${position.y})`);
-      }
-      setDraggedObject(null);
-      return;
+  // Calculate viewBox based on floor plan dimensions
+  useEffect(() => {
+    if (floorPlan) {
+      const { width, height } = floorPlan.dimensions;
+      setViewBox(`0 0 ${width} ${height}`);
     }
+  }, [floorPlan]);
 
-    // Check for object selection
-    const clickedObject = objects.find(obj =>
-      position.x >= obj.position.x &&
-      position.x < obj.position.x + obj.size.width &&
-      position.y >= obj.position.y &&
-      position.y < obj.position.y + obj.size.height
-    );
-
-    if (clickedObject) {
-      selectObject(clickedObject.id);
-      if (clickedObject.movable) {
-        setDraggedObject(clickedObject.id);
-      }
-    } else {
-      // Move assistant
-      const cell = gridMap[position.y]?.[position.x];
-      if (cell && cell.walkable && !cell.occupied) {
-        if (isConnected) {
-          sendAssistantMove(position.x, position.y);
-        } else {
-          await moveAssistantToPosition(position.x, position.y);
-        }
-        selectObject(undefined);
-      }
-    }
-  }, [objects, gridMap, selectObject, draggedObject, isConnected]);
+  const handleSvgClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    const svg = e.currentTarget;
+    const rect = svg.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * floorPlan.dimensions.width;
+    const y = ((e.clientY - rect.top) / rect.height) * floorPlan.dimensions.height;
+    onPositionClick?.({ x, y });
+  }, [floorPlan, onPositionClick]);
 
   return (
-    <div className="grid-area bg-room-bg relative overflow-hidden">
-      {/* Grid container */}
-      <div
-        className="absolute inset-0"
-        style={{
-          display: 'grid',
-          gridTemplateColumns: `repeat(${gridSize.width}, ${cellSize.width}px)`,
-          gridTemplateRows: `repeat(${gridSize.height}, ${cellSize.height}px)`,
-          gap: '1px'
-        }}
+    <div ref={containerRef} className="floor-plan-container w-full h-full">
+      <svg
+        viewBox={viewBox}
+        className="w-full h-full"
+        onClick={handleSvgClick}
+        preserveAspectRatio="xMidYMid meet"
       >
-        {Array.from({ length: gridSize.height }, (_, y) =>
-          Array.from({ length: gridSize.width }, (_, x) => (
-            <GridCell
-              key={`cell-${x}-${y}`}
-              position={{ x, y }}
-              cell={gridMap[y]?.[x]}
-              onClick={() => handleCellClick({ x, y })}
-              isSelected={selectedObject === gridMap[y]?.[x]?.objectId}
-              isDragTarget={draggedObject !== null}
-            />
-          ))
-        )}
-      </div>
+        {/* Render rooms */}
+        {floorPlan.rooms.map(room => (
+          <RoomShape key={room.id} room={room} />
+        ))}
 
-      {/* Animated Assistant */}
-      <AssistantComponent
-        position={assistant.position}
-        targetPosition={assistant.targetPosition}
-        isMoving={assistant.isMoving}
-        mood={assistant.mood}
-        status={assistant.status}
-        cellSize={cellSize}
-      />
+        {/* Render walls */}
+        {floorPlan.walls.map(wall => (
+          <WallLine key={wall.id} wall={wall} />
+        ))}
+
+        {/* Render doorways */}
+        {floorPlan.doorways.map(doorway => (
+          <DoorwayIndicator key={doorway.id} doorway={doorway} />
+        ))}
+
+        {/* Render furniture */}
+        {furniture.map(item => (
+          <FurnitureItem
+            key={item.id}
+            furniture={item}
+            onClick={() => onFurnitureClick?.(item)}
+          />
+        ))}
+
+        {/* Render assistant */}
+        <AssistantSprite
+          position={assistant.position}
+          facing={assistant.facing}
+          mood={assistant.mood}
+          isMoving={assistant.isMoving}
+        />
+      </svg>
     </div>
   );
 };

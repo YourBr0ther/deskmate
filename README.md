@@ -1,30 +1,42 @@
 # DeskMate - Virtual AI Companion
 
-DeskMate is a virtual AI companion that lives in a simulated room environment displayed on a secondary 1920x480 monitor. The companion uses LLM technology and persona cards (SillyTavern-compatible) to create an interactive, living desktop assistant with advanced multi-perspective AI reasoning.
+DeskMate is a virtual AI companion that lives in a simulated room environment. The companion uses LLM technology and persona cards (SillyTavern-compatible) to create an interactive, living desktop assistant with advanced multi-perspective AI reasoning, multi-room navigation, and responsive multi-device support.
 
 ## Project Status
 
-**Current Phase**: Phase 7 Complete - Brain Council System with Action Execution
-- ✅ **Phase 1**: Foundation & Infrastructure (Docker, FastAPI, databases)
-- ✅ **Phase 2**: Persona System & Basic Frontend (SillyTavern V2 support)
-- ✅ **Phase 3**: Room Environment & Objects (64x16 grid, object management)
-- ✅ **Phase 4**: Assistant Movement & Pathfinding (A* algorithm)
-- ✅ **Phase 5**: LLM Integration (Nano-GPT + Ollama dual provider)
-- ✅ **Phase 6**: Chat System & Memory (conversation memory, vector search)
-- ✅ **Phase 7**: Brain Council System (multi-perspective AI reasoning, action execution)
+**Current Phase**: Phase 12 In Progress - Multi-Device & Advanced Features
 
-**Next Phase**: Phase 8 - Enhanced Object Manipulation & Interaction
+### Completed Phases:
+- **Phase 1**: Foundation & Infrastructure (Docker, FastAPI, databases)
+- **Phase 2**: Persona System & Basic Frontend (SillyTavern V2 support)
+- **Phase 3**: Room Environment & Objects (grid system, object management)
+- **Phase 4**: Assistant Movement & Pathfinding (A* algorithm)
+- **Phase 5**: LLM Integration (Nano-GPT + Ollama dual provider)
+- **Phase 6**: Chat System & Memory (conversation memory, vector search)
+- **Phase 7**: Brain Council System (multi-perspective AI reasoning, action execution)
+- **Phase 8**: Object Manipulation & Interaction (pick up, put down, visual feedback)
+- **Phase 9**: Idle Mode & Autonomous Behavior (10-minute timeout, dreams)
+- **Phase 10**: UI/UX Polish & Improvements (settings, status indicators, performance monitoring)
+- **Phase 11**: Testing & Documentation (comprehensive test suites)
 
-**Features Available:**
-- 🧠 **Brain Council Reasoning**: 5-member AI council for contextual decision making
-- 🤖 **Real-time chat** with streaming AI responses and action execution
-- 🎭 **SillyTavern persona cards** with PNG metadata support
-- 🏠 **Interactive room environment** (64x16 grid) with object states
-- 🚶 **Assistant movement** with A* pathfinding and obstacle avoidance
-- 🔄 **Model switching** between Ollama (local) and Nano-GPT (cloud)
-- 💾 **Conversation memory** with semantic search and context retrieval
-- 📱 **Responsive mobile/desktop UI** with real-time updates
-- ⚡ **Action execution** (movement, object interaction, state changes)
+### Current Work (Phase 12):
+- Multi-device responsive design (desktop/tablet/mobile)
+- Top-down SVG floor plan rendering
+- Multi-room navigation with doorways
+
+### Features Available:
+- **Brain Council Reasoning**: 5-member AI council for contextual decision making
+- **Real-time chat** with streaming AI responses and action execution
+- **SillyTavern persona cards** with PNG metadata support
+- **Multi-room environment** with floor plans, doorways, and furniture
+- **Assistant movement** with A* pathfinding and multi-room navigation
+- **Object manipulation**: Pick up, put down, and hold objects
+- **Idle mode**: Autonomous behavior with "dreams" when inactive
+- **Model switching** between Ollama (local) and Nano-GPT (cloud)
+- **Conversation memory** with semantic search and context retrieval
+- **Responsive UI** with desktop, tablet, and mobile layouts
+- **Settings panel** with comprehensive configuration options
+- **Performance monitoring** with FPS and system metrics
 
 ## Quick Start
 
@@ -76,7 +88,6 @@ curl http://localhost:8000/brain/test
 5. **Access the application:**
 - **Frontend**: http://localhost:3000 (Main DeskMate interface)
 - **Backend API Docs**: http://localhost:8000/docs (Swagger/OpenAPI)
-- **Brain Council API**: http://localhost:8000/brain/analyze
 
 ### Local Development Setup
 
@@ -110,38 +121,24 @@ npm run dev  # Development server on port 3000
 docker-compose up -d deskmate-postgres deskmate-qdrant
 ```
 
-#### Phase 7 Brain Council Tests
+### Testing
+
 ```bash
-# Comprehensive Brain Council test suite
-./test_phase7.sh
-
-# Visual movement test (watch assistant move)
-./test_movement_visual.sh
-
-# Interactive WebSocket testing
-python3 test_websocket_interactive.py
-```
-
-#### Backend Tests
-```bash
+# Backend tests
 cd backend
-pytest -v                              # All tests
-pytest tests/test_pathfinding.py -v    # Movement tests
-pytest tests/test_websocket.py -v      # WebSocket tests
-pytest --cov=app tests/                # With coverage
-```
+pytest -v
+pytest --cov=app tests/
 
-#### Frontend Tests
-```bash
+# Frontend tests
 cd frontend
-npm test        # Jest tests
-npm run lint    # ESLint
-npm run typecheck  # TypeScript validation
+npm test
+npm run lint
+npm run typecheck
 ```
 
 ## Architecture
 
-### Brain Council System (Phase 7)
+### Brain Council System
 DeskMate features a unique **Brain Council** AI reasoning system where 5 specialized council members collaborate:
 
 1. **Personality Core** - Maintains character consistency with active persona
@@ -150,28 +147,42 @@ DeskMate features a unique **Brain Council** AI reasoning system where 5 special
 4. **Action Planner** - Proposes contextual actions (movement, interaction)
 5. **Validator** - Ensures actions are safe and physically possible
 
-The council generates structured JSON responses that drive both chat responses and real-world actions.
+The council generates structured JSON responses that drive both chat responses and room actions.
+
+### Multi-Room System
+The project uses a continuous pixel-based coordinate system for multi-room navigation:
+- **Floor Plans** - Container for multiple rooms, walls, doorways, furniture
+- **Rooms** - Individual spaces with bounds and styling
+- **Doorways** - Connections between rooms with accessibility states
+- **Furniture** - Objects positioned with continuous coordinates
+
+### Responsive Layout System
+- **Desktop (1920x1080+)**: Split layout - 70% floor plan, 30% chat panel
+- **Tablet (769-1024px)**: Stacked layout with collapsible chat
+- **Mobile (<768px)**: Full-screen floor plan with floating chat widget
 
 ### Technology Stack
 
 **Backend (Python/FastAPI):**
 - **FastAPI** with async WebSocket support for real-time communication
-- **Brain Council** multi-perspective AI reasoning system
+- **Brain Council** multi-perspective AI reasoning system (modular architecture)
 - **Action Executor** for movement, interaction, and state management
-- **PostgreSQL** for metadata (objects, positions, assistant state)
-- **Qdrant** vector database for conversation memory and semantic search
+- **Multi-room pathfinding** with A* algorithm and doorway transitions
+- **PostgreSQL** for metadata (floor plans, rooms, furniture, assistant state)
+- **Qdrant** vector database for conversation memory and dreams
 - **Dual LLM Support**: Nano-GPT (cloud) + Ollama (local models)
+- **Idle Controller** for autonomous behavior
 
 **Frontend (React/TypeScript):**
 - **React 18** with TypeScript and modern hooks
-- **Zustand** state management for room, chat, and persona data
+- **Zustand** unified state management (spatialStore)
 - **WebSocket** real-time communication with auto-reconnection
-- **Tailwind CSS** responsive design for mobile and desktop
-- **Grid System** 64x16 cell visualization (1920x480 target resolution)
+- **Tailwind CSS** responsive design for mobile, tablet, and desktop
+- **SVG Floor Plan Renderer** for multi-room visualization
 
 **Databases & Services:**
-- **PostgreSQL** - Object states, assistant tracking, room metadata
-- **Qdrant** - Vector embeddings for semantic memory search
+- **PostgreSQL** - Floor plans, rooms, furniture, assistant state
+- **Qdrant** - Vector embeddings for conversation memory and dreams
 - **Docker Compose** - Multi-container orchestration
 
 ## API Documentation
@@ -184,6 +195,17 @@ The council generates structured JSON responses that drive both chat responses a
 - **Test Council**: `GET /brain/test`
 - **Process Message**: `POST /brain/process`
 - **Analyze Context**: `POST /brain/analyze`
+
+### Room Navigation APIs
+- **List Floor Plans**: `GET /room/floor-plans`
+- **Current Room**: `GET /room/current`
+- **Navigate**: `POST /room/navigate`
+- **Doorway Transition**: `POST /room/doorway/transition`
+
+### Object Manipulation APIs
+- **Pick Up Object**: `POST /assistant/pick-up/{object_id}`
+- **Put Down Object**: `POST /assistant/put-down`
+- **Check Holding**: `GET /assistant/holding`
 
 ### Chat & Memory
 - **WebSocket Chat**: `WS /ws`
@@ -204,14 +226,21 @@ The council generates structured JSON responses that drive both chat responses a
 4. **Action Commands**: Try phrases like:
    - "Move to the desk"
    - "Turn on the lamp"
+   - "Pick up the book"
    - "What objects can you see?"
-   - "Walk to position 20, 10"
 
-### Brain Council Features
-- **Contextual Responses**: The AI considers room state, memory, and persona
-- **Action Generation**: Requests automatically generate appropriate actions
-- **Memory Integration**: Past conversations inform current responses
-- **Multi-step Reasoning**: Complex requests are broken down intelligently
+### Dual Mode Operation
+
+**Active Mode:**
+- Real-time chat with primary LLM
+- User-driven interactions through Brain Council
+- Full multi-perspective reasoning
+
+**Idle Mode:**
+- Triggers after 10 minutes of inactivity
+- Uses lightweight Ollama models
+- Autonomous actions stored as "dreams"
+- Dreams expire after 24 hours
 
 ### Memory Management
 ```bash
@@ -241,13 +270,6 @@ docker-compose logs -f deskmate-frontend
 docker-compose restart deskmate-backend
 ```
 
-### Adding New Features
-1. **Update appropriate service** (brain_council.py, action_executor.py, etc.)
-2. **Add tests** for new functionality
-3. **Test with Brain Council** using test scripts
-4. **Update documentation** in CLAUDE.md
-5. **Commit with descriptive message**
-
 ### Environment Variables
 ```bash
 # Required
@@ -268,8 +290,7 @@ OLLAMA_URL=http://localhost:11434
 # Check API key is set
 echo $NANO_GPT_API_KEY
 
-# Test LLM connection
-curl http://localhost:8000/chat/test/ollama
+# Test Brain Council
 curl http://localhost:8000/brain/test
 ```
 
@@ -280,9 +301,6 @@ curl http://localhost:8000/health
 
 # Check Docker containers
 docker-compose ps
-
-# View logs
-docker-compose logs deskmate-backend
 ```
 
 **Assistant not moving:**
@@ -290,10 +308,7 @@ docker-compose logs deskmate-backend
 # Test pathfinding
 curl -X POST http://localhost:8000/brain/process \
   -H "Content-Type: application/json" \
-  -d '{"message": "Move to position 10, 5"}'
-
-# Check assistant state
-curl http://localhost:8000/brain/analyze
+  -d '{"message": "Move to the desk"}'
 ```
 
 **Database connection issues:**
@@ -306,22 +321,13 @@ docker exec -it deskmate-postgres psql -U deskmate -d deskmate
 curl http://localhost:6333/collections
 ```
 
-### Debug Commands
-```bash
-# Service status
-docker-compose ps
+## Documentation
 
-# Real-time logs
-docker-compose logs -f
-
-# Database connections
-docker exec -it deskmate-postgres psql -U deskmate -d deskmate
-curl http://localhost:6333/collections
-
-# API testing
-curl http://localhost:8000/brain/test
-curl http://localhost:8000/conversation/memory/stats
-```
+- **[CLAUDE.md](CLAUDE.md)** - Developer guidance and current state
+- **[DESKMATE_SPEC.md](DESKMATE_SPEC.md)** - Complete project specification
+- **[docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)** - Technical developer documentation
+- **[docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md)** - Installation and setup guide
+- **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)** - User documentation
 
 ## Contributing
 
@@ -331,19 +337,7 @@ This project uses:
 - **Phase-based Development** following the specification
 - **Comprehensive Testing** before feature completion
 
-### Development Phases
-- **Phase 1-7**: ✅ Complete (Foundation through Brain Council)
-- **Phase 8**: 🔄 Object manipulation and advanced interaction
-- **Phase 9**: 📋 Idle mode and autonomous behavior
-- **Phase 10-12**: 📋 Polish, testing, and deployment
-
 See [DESKMATE_SPEC.md](DESKMATE_SPEC.md) for complete development roadmap.
-
-## Documentation
-
-- **[CLAUDE.md](CLAUDE.md)** - Developer guidance and current state
-- **[DESKMATE_SPEC.md](DESKMATE_SPEC.md)** - Complete project specification
-- **[CLEANUP_SUMMARY.md](CLEANUP_SUMMARY.md)** - Recent codebase cleanup notes
 
 ## License
 
@@ -351,4 +345,4 @@ See [DESKMATE_SPEC.md](DESKMATE_SPEC.md) for complete development roadmap.
 
 ---
 
-**🚀 Ready to chat with your AI companion? Start Docker and visit http://localhost:3000!**
+**Ready to chat with your AI companion? Start Docker and visit http://localhost:3000!**
