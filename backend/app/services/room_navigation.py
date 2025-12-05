@@ -179,9 +179,13 @@ class RoomNavigationService:
                 # Move to waypoint
                 await self._move_to_waypoint(db, assistant_id, waypoint)
 
-                # Update navigation progress (check existence to avoid race condition)
-                if navigation_id in self.active_navigation:
+                # Update navigation progress safely
+                try:
                     self.active_navigation[navigation_id]["current_step"] = i + 1
+                except KeyError:
+                    # Navigation was cancelled by another coroutine
+                    logger.info(f"Navigation {navigation_id} was cancelled during execution")
+                    return
 
                 # Small delay for smooth movement visualization
                 await asyncio.sleep(0.1)
@@ -434,7 +438,8 @@ class RoomNavigationService:
 
     def get_active_navigation(self, assistant_id: str) -> Optional[Dict[str, Any]]:
         """Get active navigation session for assistant."""
-        for session in self.active_navigation.values():
+        # Iterate over a copy to avoid RuntimeError if dict changes during iteration
+        for session in list(self.active_navigation.values()):
             if session["assistant_id"] == assistant_id:
                 return session
         return None
