@@ -807,7 +807,15 @@ export const useSpatialStore = create<SpatialStore>()(
                 }
                 break;
               case 'delete':
+                // Restore object to entities
                 state.entities.objects[op.rollbackData.id] = op.rollbackData;
+                // Also restore to room's objects array
+                if (op.rollbackData.room_id && state.entities.rooms[op.rollbackData.room_id]) {
+                  const roomObjects = state.entities.rooms[op.rollbackData.room_id].objects;
+                  if (!roomObjects.includes(op.rollbackData.id)) {
+                    roomObjects.push(op.rollbackData.id);
+                  }
+                }
                 break;
               case 'update':
                 if (op.rollbackData.id && state.entities.objects[op.rollbackData.id]) {
