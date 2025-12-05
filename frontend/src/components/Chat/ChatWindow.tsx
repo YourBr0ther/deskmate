@@ -12,6 +12,7 @@ import { usePersonaStore } from '../../stores/personaStore';
 
 const ChatWindow: React.FC = () => {
   const {
+    messages,
     isConnected,
     isTyping,
     connect,
@@ -34,7 +35,7 @@ const ChatWindow: React.FC = () => {
 
   useEffect(() => {
     scrollToBottom();
-  }, [useChatStore.getState().messages]);
+  }, [messages.length]);
 
   // Connect to WebSocket on mount
   useEffect(() => {
