@@ -1010,7 +1010,23 @@ export const useSpatialStore = create<SpatialStore>()(
 // Cleanup subscription for expired operations
 // ============================================================================
 
+// Store interval ID for cleanup (prevents memory leaks during HMR/tests)
+let cleanupIntervalId: ReturnType<typeof setInterval> | null = null;
+
+// Clear any existing interval before creating a new one (for HMR)
+if (cleanupIntervalId) {
+  clearInterval(cleanupIntervalId);
+}
+
 // Clean up expired operations every 30 seconds
-setInterval(() => {
+cleanupIntervalId = setInterval(() => {
   useSpatialStore.getState().clearExpiredOperations();
 }, 30000);
+
+// Export cleanup function for tests
+export const cleanupSpatialStoreInterval = () => {
+  if (cleanupIntervalId) {
+    clearInterval(cleanupIntervalId);
+    cleanupIntervalId = null;
+  }
+};
