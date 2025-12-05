@@ -174,10 +174,13 @@ global.ResizeObserver = MockResizeObserver;
 // IntersectionObserver Mock
 // ============================================================================
 
-class MockIntersectionObserver {
+class MockIntersectionObserver implements IntersectionObserver {
   callback: IntersectionObserverCallback;
+  root: Element | Document | null = null;
+  rootMargin: string = '0px';
+  thresholds: ReadonlyArray<number> = [0];
 
-  constructor(callback: IntersectionObserverCallback) {
+  constructor(callback: IntersectionObserverCallback, _options?: IntersectionObserverInit) {
     this.callback = callback;
   }
 
@@ -191,6 +194,10 @@ class MockIntersectionObserver {
 
   disconnect(): void {
     // No-op for tests
+  }
+
+  takeRecords(): IntersectionObserverEntry[] {
+    return [];
   }
 }
 

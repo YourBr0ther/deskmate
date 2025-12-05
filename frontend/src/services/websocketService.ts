@@ -173,6 +173,22 @@ export interface WebSocketInboundEvents {
     hours_back: number;
   };
 
+  // Position update (from navigation service)
+  position_update: {
+    assistant_id: string;
+    position: { x: number; y: number };
+    timestamp: string;
+  };
+
+  // Room transition (when assistant moves between rooms)
+  room_transition: {
+    assistant_id: string;
+    from_room: string;
+    to_room: string;
+    doorway_id: string;
+    timestamp: string;
+  };
+
   // State update (response to get_state request)
   state_update: {
     assistant: WebSocketInboundEvents['assistant_state'];
@@ -279,6 +295,8 @@ export class TypedWebSocketService {
       chat_cleared: this.handleChatCleared.bind(this),
       assistant_state: this.handleAssistantState.bind(this),
       assistant_typing: this.handleAssistantTyping.bind(this),
+      position_update: this.handlePositionUpdate.bind(this),
+      room_transition: this.handleRoomTransition.bind(this),
       mode_change: this.handleModeChange.bind(this),
       object_created: this.handleObjectCreated.bind(this),
       object_moved: this.handleObjectMoved.bind(this),
@@ -518,6 +536,29 @@ export class TypedWebSocketService {
       if (lastMsg && lastMsg.isStreaming) {
         chatStore.updateMessage(lastMsg.id, { isStreaming: false });
       }
+    }
+  }
+
+  private handlePositionUpdate(data: WebSocketInboundEvents['position_update']): void {
+    const spatialStore = useSpatialStore.getState();
+    console.log('Position update:', data);
+
+    // Update assistant position in the store
+    spatialStore.setAssistantPosition(data.position);
+  }
+
+  private handleRoomTransition(data: WebSocketInboundEvents['room_transition']): void {
+    console.log('Room transition:', data);
+
+    // Room transitions are handled automatically by the UI components
+    // that listen to WebSocket events. The floor plan components
+    // will re-render based on the assistant's position updates.
+
+    // Dispatch a custom event for components that need to react to room changes
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('deskmate:room-transition', {
+        detail: data
+      }));
     }
   }
 

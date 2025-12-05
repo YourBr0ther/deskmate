@@ -5,10 +5,13 @@
  * that can be minimized, partially expanded, or fully expanded.
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 
 import { useDeviceDetection, useLayoutConfig } from '../../hooks/useDeviceDetection';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { useSpatialStore } from '../../stores/spatialStore';
+import { useChatStore } from '../../stores/chatStore';
+import { Assistant as FloorPlanAssistant, Position } from '../../types/floorPlan';
 import DebugOverlay from '../Debug/DebugOverlay';
 import DebugPanel from '../Debug/DebugPanel';
 
@@ -29,9 +32,112 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({ children }) => {
   const deviceInfo = useDeviceDetection();
   const layoutConfig = useLayoutConfig();
   const { openSettings } = useSettingsStore();
+  const { sendAssistantMove, isConnected } = useChatStore();
   const [chatState, setChatState] = useState<ChatWidgetState>('minimized');
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [currentRoom, setCurrentRoom] = useState('Living Room');
+
+  // Get state from spatialStore
+  const currentFloorPlan = useSpatialStore((state) => state.floorPlan.currentFloorPlan);
+  const spatialAssistant = useSpatialStore((state) => state.assistant);
+  const setCurrentFloorPlan = useSpatialStore((state) => state.setCurrentFloorPlan);
+  const setAssistantPosition = useSpatialStore((state) => state.setAssistantPosition);
+
+  // Current room derived from floor plan
+  const currentRoom = useMemo(() => {
+    if (currentFloorPlan?.rooms?.length) {
+      return currentFloorPlan.rooms[0].name;
+    }
+    return 'Loading...';
+  }, [currentFloorPlan]);
+
+  // Adapt spatialStore assistant to FloorPlan Assistant format for MobileFloorPlan
+  const assistant: FloorPlanAssistant | null = useMemo(() => {
+    if (!spatialAssistant) return null;
+
+    // Map current_action string to valid AssistantAction
+    const validActions = ['idle', 'walking', 'sitting', 'talking', 'interacting'] as const;
+    type AssistantAction = typeof validActions[number];
+    const action: AssistantAction = validActions.includes(spatialAssistant.current_action as AssistantAction)
+      ? spatialAssistant.current_action as AssistantAction
+      : 'idle';
+
+    // Map mood to valid AssistantMood (floorPlan types)
+    const validMoods = ['happy', 'sad', 'neutral', 'excited', 'tired', 'confused', 'focused'] as const;
+    type AssistantMood = typeof validMoods[number];
+    const moodMap: Record<string, AssistantMood> = {
+      happy: 'happy',
+      neutral: 'neutral',
+      tired: 'tired',
+      focused: 'focused',
+      curious: 'neutral',
+    };
+    const mood: AssistantMood = moodMap[spatialAssistant.mood] || 'neutral';
+
+    return {
+      id: spatialAssistant.id,
+      location: {
+        position: spatialAssistant.position,
+        facing: spatialAssistant.facing || 'right',
+        facing_angle: 0
+      },
+      status: {
+        mood,
+        action,
+        energy_level: spatialAssistant.energy_level,
+        mode: spatialAssistant.status === 'active' ? 'active' : 'idle'
+      }
+    };
+  }, [spatialAssistant]);
+
+  // Load floor plan data on mount
+  useEffect(() => {
+    const loadFloorPlanData = async () => {
+      if (currentFloorPlan) return; // Already have a floor plan
+
+      try {
+        // Try to fetch active floor plan
+        const response = await fetch('/api/rooms/floor-plans/active');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.active_floor_plan) {
+            // Load the full floor plan details
+            const detailResponse = await fetch(`/api/rooms/floor-plans/${data.active_floor_plan.id}`);
+            if (detailResponse.ok) {
+              const floorPlan = await detailResponse.json();
+              setCurrentFloorPlan(floorPlan);
+              return;
+            }
+          }
+        }
+
+        // Fallback: try /api/floor-plans/current for legacy support
+        const legacyResponse = await fetch('/api/floor-plans/current');
+        if (legacyResponse.ok) {
+          const floorPlan = await legacyResponse.json();
+          setCurrentFloorPlan(floorPlan);
+        }
+      } catch (error) {
+        console.error('Failed to load floor plan:', error);
+      }
+    };
+
+    loadFloorPlanData();
+  }, [currentFloorPlan, setCurrentFloorPlan]);
+
+  // Handle assistant movement
+  const handleAssistantMove = useCallback((position: Position) => {
+    if (isConnected) {
+      sendAssistantMove(position.x, position.y);
+    } else {
+      // Optimistic local update if not connected
+      setAssistantPosition(position);
+    }
+  }, [isConnected, sendAssistantMove, setAssistantPosition]);
+
+  // Handle object selection
+  const handleObjectSelect = useCallback((objectId: string) => {
+    console.log('Object selected:', objectId);
+  }, []);
 
   // Check if this is the user's first visit
   useEffect(() => {
@@ -158,10 +264,10 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({ children }) => {
   const renderStatusBar = () => (
     <div className="mobile-status-bar bg-white border-t border-gray-200 px-4 py-2 flex items-center justify-between text-sm text-gray-600">
       <div className="flex items-center space-x-4">
-        <span>Assistant: Living Room</span>
+        <span>Assistant: {currentRoom}</span>
         <div className="flex items-center space-x-1">
-          <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-          <span>Active</span>
+          <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-gray-400'}`}></div>
+          <span>{spatialAssistant?.status === 'active' ? 'Active' : 'Idle'}</span>
         </div>
       </div>
 
@@ -198,7 +304,12 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({ children }) => {
             </div>
           }
         >
-          <MobileFloorPlan />
+          <MobileFloorPlan
+            floorPlan={currentFloorPlan}
+            assistant={assistant}
+            onAssistantMove={handleAssistantMove}
+            onObjectSelect={handleObjectSelect}
+          />
         </React.Suspense>
 
         {/* Floor Plan Overlay (dimmed when chat is expanded) */}
