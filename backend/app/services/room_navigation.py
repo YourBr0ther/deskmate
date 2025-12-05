@@ -8,13 +8,14 @@ and maintains assistant state during movement across rooms.
 import asyncio
 import logging
 from typing import Dict, Any, Optional, Tuple, List
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from datetime import datetime
 
 from app.models.assistant import AssistantState, AssistantActionLog
 from app.models.rooms import FloorPlan, Room, Doorway
 from app.services.multi_room_pathfinding import multi_room_pathfinding_service, RoomGraph
-from app.db.database import get_db
+from app.db.connection_manager import get_db_session
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ class RoomNavigationService:
 
     async def navigate_to_position(
         self,
-        db: Session,
+        db: AsyncSession,
         assistant_id: str,
         target_x: float,
         target_y: float,
@@ -52,7 +53,8 @@ class RoomNavigationService:
         logger.info(f"Navigating assistant {assistant_id} to ({target_x}, {target_y}) in room {target_room_id}")
 
         # Get assistant current state
-        assistant = db.query(AssistantState).filter(AssistantState.id == assistant_id).first()
+        result = await db.execute(select(AssistantState).filter(AssistantState.id == assistant_id))
+        assistant = result.scalar_one_or_none()
         if not assistant:
             return {"success": False, "error": "Assistant not found"}
 
@@ -68,10 +70,11 @@ class RoomNavigationService:
             return {"success": False, "error": "No target room specified"}
 
         # Validate target room exists
-        target_room = db.query(Room).filter(
+        result = await db.execute(select(Room).filter(
             Room.id == target_room_id,
             Room.floor_plan_id == assistant.current_floor_plan_id
-        ).first()
+        ))
+        target_room = result.scalar_one_or_none()
 
         if not target_room:
             return {"success": False, "error": f"Target room {target_room_id} not found"}
@@ -128,10 +131,10 @@ class RoomNavigationService:
             path=path_result["path"],
             target_room_id=target_room_id
         )
-        db.commit()
+        await db.commit()
 
         # Log action
-        self._log_navigation_action(
+        await self._log_navigation_action(
             db, assistant_id, "navigation_started",
             {
                 "target": {"x": target_x, "y": target_y, "room_id": target_room_id},
@@ -142,8 +145,8 @@ class RoomNavigationService:
             "user" if user_initiated else "autonomous"
         )
 
-        # Start async movement execution
-        asyncio.create_task(self._execute_navigation(db, navigation_session))
+        # Start async movement execution - uses its own db session to avoid lifecycle issues
+        asyncio.create_task(self._execute_navigation(navigation_session))
 
         return {
             "success": True,
@@ -155,51 +158,63 @@ class RoomNavigationService:
             "total_distance": path_result["total_distance"]
         }
 
-    async def _execute_navigation(self, db: Session, navigation_session: Dict[str, Any]):
-        """Execute navigation path with room transitions."""
+    async def _execute_navigation(self, navigation_session: Dict[str, Any]):
+        """Execute navigation path with room transitions.
+
+        Uses its own database session to avoid lifecycle issues when the
+        parent request context closes before navigation completes.
+        """
         navigation_id = navigation_session["id"]
         assistant_id = navigation_session["assistant_id"]
         path = navigation_session["path"]
         room_transitions = navigation_session["room_transitions"]
 
         try:
-            logger.info(f"Executing navigation {navigation_id} with {len(path)} waypoints")
+            # Get fresh database session for background task
+            async with get_db_session() as db:
+                logger.info(f"Executing navigation {navigation_id} with {len(path)} waypoints")
 
-            # Execute each step in the path
-            for i, waypoint in enumerate(path):
-                if navigation_id not in self.active_navigation:
-                    logger.info(f"Navigation {navigation_id} was cancelled")
-                    return
+                # Execute each step in the path
+                for i, waypoint in enumerate(path):
+                    if navigation_id not in self.active_navigation:
+                        logger.info(f"Navigation {navigation_id} was cancelled")
+                        return
 
-                # Check for room transitions
-                for transition in room_transitions:
-                    if self._is_at_doorway(waypoint, transition["doorway_position"]):
-                        await self._handle_room_transition(db, assistant_id, transition)
+                    # Check for room transitions
+                    for transition in room_transitions:
+                        if self._is_at_doorway(waypoint, transition["doorway_position"]):
+                            await self._handle_room_transition(db, assistant_id, transition)
 
-                # Move to waypoint
-                await self._move_to_waypoint(db, assistant_id, waypoint)
+                    # Move to waypoint
+                    await self._move_to_waypoint(db, assistant_id, waypoint)
 
-                # Update navigation progress safely
-                try:
-                    self.active_navigation[navigation_id]["current_step"] = i + 1
-                except KeyError:
-                    # Navigation was cancelled by another coroutine
-                    logger.info(f"Navigation {navigation_id} was cancelled during execution")
-                    return
+                    # Update navigation progress safely
+                    try:
+                        self.active_navigation[navigation_id]["current_step"] = i + 1
+                    except KeyError:
+                        # Navigation was cancelled by another coroutine
+                        logger.info(f"Navigation {navigation_id} was cancelled during execution")
+                        return
 
-                # Small delay for smooth movement visualization
-                await asyncio.sleep(0.1)
+                    # Small delay for smooth movement visualization
+                    await asyncio.sleep(0.1)
 
-            # Complete navigation
-            await self._complete_navigation(db, navigation_id)
+                # Complete navigation
+                await self._complete_navigation(db, navigation_id)
 
         except Exception as e:
             logger.error(f"Error executing navigation {navigation_id}: {e}")
-            await self._cancel_navigation(db, navigation_id, str(e))
+            # Get fresh session for cancellation
+            try:
+                async with get_db_session() as db:
+                    await self._cancel_navigation(db, navigation_id, str(e))
+            except Exception as cancel_error:
+                logger.error(f"Failed to cancel navigation {navigation_id}: {cancel_error}")
 
-    async def _move_to_waypoint(self, db: Session, assistant_id: str, waypoint: Dict[str, Any]):
+    async def _move_to_waypoint(self, db: AsyncSession, assistant_id: str, waypoint: Dict[str, Any]):
         """Move assistant to a specific waypoint."""
-        assistant = db.query(AssistantState).filter(AssistantState.id == assistant_id).first()
+        result = await db.execute(select(AssistantState).filter(AssistantState.id == assistant_id))
+        assistant = result.scalar_one_or_none()
         if not assistant:
             return
 
@@ -222,14 +237,15 @@ class RoomNavigationService:
 
             assistant.facing_direction = facing
 
-        db.commit()
+        await db.commit()
 
         # Notify subscribers of position update
         await self._notify_position_update(assistant_id, waypoint)
 
-    async def _handle_room_transition(self, db: Session, assistant_id: str, transition: Dict[str, Any]):
+    async def _handle_room_transition(self, db: AsyncSession, assistant_id: str, transition: Dict[str, Any]):
         """Handle transition between rooms through doorway."""
-        assistant = db.query(AssistantState).filter(AssistantState.id == assistant_id).first()
+        result = await db.execute(select(AssistantState).filter(AssistantState.id == assistant_id))
+        assistant = result.scalar_one_or_none()
         if not assistant:
             return
 
@@ -241,10 +257,10 @@ class RoomNavigationService:
 
         # Update assistant room
         assistant.change_room(to_room)
-        db.commit()
+        await db.commit()
 
         # Log room transition
-        self._log_navigation_action(
+        await self._log_navigation_action(
             db, assistant_id, "room_transition",
             {
                 "from_room": from_room,
@@ -288,9 +304,10 @@ class RoomNavigationService:
         except Exception as e:
             logger.error(f"Failed to broadcast room transition: {e}")
 
-    async def _open_door(self, db: Session, doorway_id: str) -> Dict[str, Any]:
+    async def _open_door(self, db: AsyncSession, doorway_id: str) -> Dict[str, Any]:
         """Open a door if it's closed."""
-        doorway = db.query(Doorway).filter(Doorway.id == doorway_id).first()
+        result = await db.execute(select(Doorway).filter(Doorway.id == doorway_id))
+        doorway = result.scalar_one_or_none()
         if not doorway:
             return {"success": False, "error": f"Doorway {doorway_id} not found"}
 
@@ -305,12 +322,12 @@ class RoomNavigationService:
 
         # Open the door
         doorway.door_state = "open"
-        db.commit()
+        await db.commit()
 
         logger.info(f"Opened door {doorway_id}")
         return {"success": True, "message": f"Opened door {doorway.name or doorway_id}"}
 
-    async def _complete_navigation(self, db: Session, navigation_id: str):
+    async def _complete_navigation(self, db: AsyncSession, navigation_id: str):
         """Complete navigation and clean up."""
         # Use pop() which is atomic - avoids race condition between check and delete
         session = self.active_navigation.pop(navigation_id, None)
@@ -320,13 +337,14 @@ class RoomNavigationService:
         assistant_id = session["assistant_id"]
 
         # Update assistant state
-        assistant = db.query(AssistantState).filter(AssistantState.id == assistant_id).first()
+        result = await db.execute(select(AssistantState).filter(AssistantState.id == assistant_id))
+        assistant = result.scalar_one_or_none()
         if assistant:
             assistant.complete_movement()
-            db.commit()
+            await db.commit()
 
         # Log completion
-        self._log_navigation_action(
+        await self._log_navigation_action(
             db, assistant_id, "navigation_completed",
             {
                 "navigation_id": navigation_id,
@@ -339,7 +357,7 @@ class RoomNavigationService:
 
         logger.info(f"Navigation {navigation_id} completed")
 
-    async def _cancel_navigation(self, db: Session, navigation_id: str, reason: str = "user_cancelled"):
+    async def _cancel_navigation(self, db: AsyncSession, navigation_id: str, reason: str = "user_cancelled"):
         """Cancel active navigation."""
         # Use pop() which is atomic - avoids race condition between check and delete
         session = self.active_navigation.pop(navigation_id, None)
@@ -349,7 +367,8 @@ class RoomNavigationService:
         assistant_id = session["assistant_id"]
 
         # Update assistant state
-        assistant = db.query(AssistantState).filter(AssistantState.id == assistant_id).first()
+        result = await db.execute(select(AssistantState).filter(AssistantState.id == assistant_id))
+        assistant = result.scalar_one_or_none()
         if assistant:
             assistant.is_moving = False
             assistant.target_x = None
@@ -357,10 +376,10 @@ class RoomNavigationService:
             assistant.target_room_id = None
             assistant.movement_path = None
             assistant.current_action = "idle"
-            db.commit()
+            await db.commit()
 
         # Log cancellation
-        self._log_navigation_action(
+        await self._log_navigation_action(
             db, assistant_id, "navigation_cancelled",
             {"navigation_id": navigation_id, "reason": reason},
             "system"
@@ -389,9 +408,9 @@ class RoomNavigationService:
         distance = ((waypoint["x"] - doorway_pos[0])**2 + (waypoint["y"] - doorway_pos[1])**2)**0.5
         return distance <= threshold
 
-    def _log_navigation_action(
+    async def _log_navigation_action(
         self,
-        db: Session,
+        db: AsyncSession,
         assistant_id: str,
         action_type: str,
         action_data: Dict[str, Any],
@@ -407,7 +426,7 @@ class RoomNavigationService:
                 success=True
             )
             db.add(log_entry)
-            db.commit()
+            await db.commit()
         except Exception as e:
             logger.error(f"Error logging navigation action: {e}")
 

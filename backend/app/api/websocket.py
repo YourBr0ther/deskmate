@@ -25,7 +25,7 @@ from app.services.conversation_memory import conversation_memory
 from app.services.action_executor import action_executor
 from app.services.idle_controller import idle_controller
 from app.exceptions import (
-    ConnectionError, BusinessLogicError, ActionExecutionError,
+    WebSocketError, BusinessLogicError, ActionExecutionError,
     ResourceError, ServiceError, create_error_from_exception, ErrorSeverity,
     DatabaseError, AIServiceError, BrainCouncilError
 )
@@ -43,7 +43,7 @@ async def handle_websocket_error(
     error_message: str = "An error occurred"
 ) -> None:
     """Helper function to handle WebSocket errors consistently."""
-    if isinstance(e, (ResourceError, ServiceError, BusinessLogicError, ConnectionError)):
+    if isinstance(e, (ResourceError, ServiceError, BusinessLogicError, WebSocketError)):
         e.log_error({"context": context})
         user_message = e.user_message
     else:
@@ -139,7 +139,7 @@ class ConnectionManager:
                         self.disconnect(websocket)
                     else:
                         # Log error but don't disconnect yet
-                        error = ConnectionError(
+                        error = WebSocketError(
                             f"Failed to send personal message after {max_retries + 1} attempts: {str(e)}",
                             connection_type="websocket",
                             details={"message_type": message.get("type"), "attempt": attempt + 1}

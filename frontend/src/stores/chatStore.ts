@@ -35,6 +35,7 @@ interface ChatState {
   isConnected: boolean;
   isTyping: boolean;
   currentMessage: string;
+  streamingMessageId: string | null;  // Track current streaming message to avoid race conditions
 
   // Model selection
   availableModels: LLMModel[];
@@ -86,6 +87,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isConnected: false,
   isTyping: false,
   currentMessage: '',
+  streamingMessageId: null,
   availableModels: [],
   currentModel: 'llama3:latest',
   currentProvider: 'ollama',
@@ -501,22 +503,27 @@ function handleWebSocketMessage(message: any) {
       // Hide typing indicator when streaming starts
       store.setTyping(false);
 
-      // Find the last assistant message and update it
-      const messages = store.messages;
-      const lastMessage = messages[messages.length - 1];
+      // Use tracked streaming message ID to avoid race conditions
+      const currentStreamingId = useChatStore.getState().streamingMessageId;
 
-      if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
-        store.updateMessage(lastMessage.id, {
+      if (currentStreamingId) {
+        // Update existing streaming message by ID (safe from race conditions)
+        store.updateMessage(currentStreamingId, {
           content: data.full_content
         });
       } else {
-        // Create new streaming message
-        store.addMessage({
-          role: 'assistant',
-          content: data.content,
-          timestamp: new Date().toISOString(),
-          isStreaming: true
-        });
+        // Create new streaming message and track its ID
+        const newMessageId = generateId();
+        useChatStore.setState({ streamingMessageId: newMessageId });
+        useChatStore.setState((state) => ({
+          messages: [...state.messages, {
+            id: newMessageId,
+            role: 'assistant',
+            content: data.content,
+            timestamp: new Date().toISOString(),
+            isStreaming: true
+          }]
+        }));
       }
       break;
 
@@ -524,10 +531,11 @@ function handleWebSocketMessage(message: any) {
       console.log('Assistant typing event:', data.typing);
       store.setTyping(data.typing);
       if (!data.typing) {
-        // Mark last message as complete when typing stops
-        const lastMsg = store.messages[store.messages.length - 1];
-        if (lastMsg && lastMsg.isStreaming) {
-          store.updateMessage(lastMsg.id, { isStreaming: false });
+        // Mark streaming message as complete when typing stops
+        const streamingId = useChatStore.getState().streamingMessageId;
+        if (streamingId) {
+          store.updateMessage(streamingId, { isStreaming: false });
+          useChatStore.setState({ streamingMessageId: null });  // Clear tracking
         }
       }
       break;
