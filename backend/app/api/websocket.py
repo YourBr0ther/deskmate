@@ -26,7 +26,8 @@ from app.services.action_executor import action_executor
 from app.services.idle_controller import idle_controller
 from app.exceptions import (
     ConnectionError, BusinessLogicError, ActionExecutionError,
-    ResourceError, ServiceError, create_error_from_exception, ErrorSeverity
+    ResourceError, ServiceError, create_error_from_exception, ErrorSeverity,
+    DatabaseError, AIServiceError, BrainCouncilError
 )
 from app.services.dream_memory import dream_memory
 
