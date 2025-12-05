@@ -179,8 +179,9 @@ class RoomNavigationService:
                 # Move to waypoint
                 await self._move_to_waypoint(db, assistant_id, waypoint)
 
-                # Update navigation progress
-                self.active_navigation[navigation_id]["current_step"] = i + 1
+                # Update navigation progress (check existence to avoid race condition)
+                if navigation_id in self.active_navigation:
+                    self.active_navigation[navigation_id]["current_step"] = i + 1
 
                 # Small delay for smooth movement visualization
                 await asyncio.sleep(0.1)
@@ -250,12 +251,38 @@ class RoomNavigationService:
             "autonomous"
         )
 
+        # Broadcast room transition via WebSocket
+        await self._notify_room_transition(assistant_id, from_room, to_room, doorway_id)
+
         # Notify callbacks
         for callback in self.transition_callbacks:
             try:
                 await callback(assistant_id, from_room, to_room, doorway_id)
             except Exception as e:
                 logger.error(f"Error in transition callback: {e}")
+
+    async def _notify_room_transition(self, assistant_id: str, from_room: str, to_room: str, doorway_id: str):
+        """Notify clients of room transition via WebSocket."""
+        try:
+            # Delayed import to avoid circular dependency
+            from app.api.websocket import connection_manager
+
+            message = {
+                "type": "room_transition",
+                "data": {
+                    "assistant_id": assistant_id,
+                    "from_room": from_room,
+                    "to_room": to_room,
+                    "doorway_id": doorway_id,
+                    "timestamp": datetime.now().isoformat()
+                },
+                "timestamp": datetime.now().isoformat()
+            }
+
+            await connection_manager.broadcast(message)
+            logger.debug(f"Broadcast room transition for assistant {assistant_id}: {from_room} -> {to_room}")
+        except Exception as e:
+            logger.error(f"Failed to broadcast room transition: {e}")
 
     async def _open_door(self, db: Session, doorway_id: str) -> Dict[str, Any]:
         """Open a door if it's closed."""
@@ -281,10 +308,11 @@ class RoomNavigationService:
 
     async def _complete_navigation(self, db: Session, navigation_id: str):
         """Complete navigation and clean up."""
-        if navigation_id not in self.active_navigation:
+        # Use pop() which is atomic - avoids race condition between check and delete
+        session = self.active_navigation.pop(navigation_id, None)
+        if not session:
             return
 
-        session = self.active_navigation[navigation_id]
         assistant_id = session["assistant_id"]
 
         # Update assistant state
@@ -305,16 +333,15 @@ class RoomNavigationService:
             "system"
         )
 
-        # Clean up
-        del self.active_navigation[navigation_id]
         logger.info(f"Navigation {navigation_id} completed")
 
     async def _cancel_navigation(self, db: Session, navigation_id: str, reason: str = "user_cancelled"):
         """Cancel active navigation."""
-        if navigation_id not in self.active_navigation:
+        # Use pop() which is atomic - avoids race condition between check and delete
+        session = self.active_navigation.pop(navigation_id, None)
+        if not session:
             return
 
-        session = self.active_navigation[navigation_id]
         assistant_id = session["assistant_id"]
 
         # Update assistant state
@@ -335,8 +362,6 @@ class RoomNavigationService:
             "system"
         )
 
-        # Clean up
-        del self.active_navigation[navigation_id]
         logger.info(f"Navigation {navigation_id} cancelled: {reason}")
 
     def _is_position_in_room(self, x: float, y: float, room: Room) -> bool:
@@ -384,9 +409,24 @@ class RoomNavigationService:
 
     async def _notify_position_update(self, assistant_id: str, position: Dict[str, Any]):
         """Notify clients of assistant position update via WebSocket."""
-        # This would integrate with the WebSocket manager
-        # For now, just log the update
-        logger.debug(f"Assistant {assistant_id} position updated: {position}")
+        try:
+            # Delayed import to avoid circular dependency
+            from app.api.websocket import connection_manager
+
+            message = {
+                "type": "position_update",
+                "data": {
+                    "assistant_id": assistant_id,
+                    "position": position,
+                    "timestamp": datetime.now().isoformat()
+                },
+                "timestamp": datetime.now().isoformat()
+            }
+
+            await connection_manager.broadcast(message)
+            logger.debug(f"Broadcast position update for assistant {assistant_id}: {position}")
+        except Exception as e:
+            logger.error(f"Failed to broadcast position update: {e}")
 
     def add_transition_callback(self, callback):
         """Add callback for room transitions."""
@@ -401,11 +441,8 @@ class RoomNavigationService:
 
     def cancel_navigation(self, navigation_id: str) -> bool:
         """Cancel navigation by ID."""
-        if navigation_id in self.active_navigation:
-            # This will be picked up by the execution loop
-            del self.active_navigation[navigation_id]
-            return True
-        return False
+        # Use pop() which is atomic - avoids race condition between check and delete
+        return self.active_navigation.pop(navigation_id, None) is not None
 
 
 # Global service instance
