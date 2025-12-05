@@ -435,7 +435,7 @@ export const useSpatialStore = create<SpatialStore>()(
 
         if (!currentObject) return;
 
-        const rollbackData = { ...currentObject.states };
+        const rollbackData = { id: objectId, states: { ...currentObject.states } };
         get().addPendingOperation({
           id: operationId,
           type: 'update',
@@ -811,7 +811,7 @@ export const useSpatialStore = create<SpatialStore>()(
                 break;
               case 'update':
                 if (op.rollbackData.id && state.entities.objects[op.rollbackData.id]) {
-                  state.entities.objects[op.rollbackData.id].states = op.rollbackData;
+                  state.entities.objects[op.rollbackData.id].states = op.rollbackData.states;
                 }
                 break;
             }
