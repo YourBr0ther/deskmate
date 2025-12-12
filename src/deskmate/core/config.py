@@ -96,6 +96,26 @@ class PersonalityConfig(BaseModel):
     personality: PersonalityTraits = Field(default_factory=PersonalityTraits)
 
 
+class ObjectConfig(BaseModel):
+    """Configuration for a single game object."""
+
+    id: str
+    name: str
+    x: int
+    y: int
+    can_be_held: bool = True
+    color: list[int] = Field(default_factory=lambda: [200, 200, 100])
+    shape: str = "rect"  # circle, rect, diamond, plant
+    width: int = 32
+    height: int = 32
+
+
+class ObjectsConfig(BaseModel):
+    """Root objects configuration."""
+
+    objects: list[ObjectConfig] = Field(default_factory=list)
+
+
 def load_yaml(path: Path) -> dict[str, Any]:
     """Load a YAML file and return its contents."""
     with open(path) as f:
@@ -130,9 +150,24 @@ def load_personality(config_dir: Path | None = None) -> PersonalityConfig:
     return PersonalityConfig()
 
 
+def load_objects(config_dir: Path | None = None) -> ObjectsConfig:
+    """Load objects from config/objects.yaml."""
+    if config_dir is None:
+        config_dir = Path(__file__).parent.parent.parent.parent / "config"
+
+    objects_path = config_dir / "objects.yaml"
+
+    if objects_path.exists():
+        data = load_yaml(objects_path)
+        return ObjectsConfig.model_validate(data)
+
+    return ObjectsConfig()
+
+
 # Singleton instances for easy access
 _settings: Settings | None = None
 _personality: PersonalityConfig | None = None
+_objects: ObjectsConfig | None = None
 
 
 def get_settings() -> Settings:
@@ -151,8 +186,17 @@ def get_personality() -> PersonalityConfig:
     return _personality
 
 
+def get_objects() -> ObjectsConfig:
+    """Get the global objects instance."""
+    global _objects
+    if _objects is None:
+        _objects = load_objects()
+    return _objects
+
+
 def reset_config() -> None:
     """Reset config singletons (useful for testing)."""
-    global _settings, _personality
+    global _settings, _personality, _objects
     _settings = None
     _personality = None
+    _objects = None

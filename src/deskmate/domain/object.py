@@ -16,6 +16,8 @@ class GameObject:
     can_be_held: bool = True
     is_held: bool = False
     sprite_name: str | None = None
+    color: tuple[int, int, int] = (200, 200, 100)  # RGB color
+    shape: str = "rect"  # circle, rect, diamond, plant
 
     @property
     def center_x(self) -> float:

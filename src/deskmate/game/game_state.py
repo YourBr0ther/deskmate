@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import TYPE_CHECKING
 
-from deskmate.core.config import Settings, get_personality
+from deskmate.core.config import Settings, get_personality, get_objects
 from deskmate.domain.companion import Companion
 from deskmate.domain.conversation import Conversation
 from deskmate.domain.object import GameObject
@@ -56,43 +56,22 @@ class GameState:
             walkable_area=walkable_area,
         )
 
-        # Add some default objects
-        room.add_object(
-            GameObject(
-                id="ball",
-                name="Bouncy Ball",
-                x=200,
-                y=500,
-                width=32,
-                height=32,
-                can_be_held=True,
-                sprite_name="ball.png",
+        # Load objects from config
+        objects_config = get_objects()
+        for obj_cfg in objects_config.objects:
+            room.add_object(
+                GameObject(
+                    id=obj_cfg.id,
+                    name=obj_cfg.name,
+                    x=float(obj_cfg.x),
+                    y=float(obj_cfg.y),
+                    width=obj_cfg.width,
+                    height=obj_cfg.height,
+                    can_be_held=obj_cfg.can_be_held,
+                    color=tuple(obj_cfg.color),  # type: ignore
+                    shape=obj_cfg.shape,
+                )
             )
-        )
-        room.add_object(
-            GameObject(
-                id="book",
-                name="Book",
-                x=350,
-                y=480,
-                width=40,
-                height=30,
-                can_be_held=True,
-                sprite_name="book.png",
-            )
-        )
-        room.add_object(
-            GameObject(
-                id="plant",
-                name="Potted Plant",
-                x=100,
-                y=450,
-                width=48,
-                height=64,
-                can_be_held=False,
-                sprite_name="plant.png",
-            )
-        )
 
         # Create companion at starting position
         companion = Companion(

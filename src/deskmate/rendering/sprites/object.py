@@ -13,21 +13,6 @@ class ObjectSprite:
     with actual sprites later.
     """
 
-    # Colors for different object types (based on sprite_name or id)
-    OBJECT_COLORS = {
-        "ball": (255, 100, 100),  # Red
-        "book": (100, 150, 255),  # Blue
-        "plant": (100, 200, 100),  # Green
-        "default": (200, 200, 100),  # Yellow
-    }
-
-    OBJECT_SHAPES = {
-        "ball": "circle",
-        "book": "rect",
-        "plant": "plant",
-        "default": "rect",
-    }
-
     def __init__(self, obj: GameObject) -> None:
         """Initialize the object sprite."""
         self.obj_id = obj.id
@@ -37,9 +22,9 @@ class ObjectSprite:
         self.height = obj.height
         self.can_be_held = obj.can_be_held
 
-        # Determine color and shape
-        self.color = self.OBJECT_COLORS.get(obj.id, self.OBJECT_COLORS["default"])
-        self.shape = self.OBJECT_SHAPES.get(obj.id, self.OBJECT_SHAPES["default"])
+        # Get color and shape from the object
+        self.color = obj.color
+        self.shape = obj.shape
 
         # Create the surface
         self.surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
@@ -79,16 +64,36 @@ class ObjectSprite:
                 self.surface, leaf_color, pygame.Rect(26, 15, 18, 25)
             )
 
-        else:  # rect (book, default)
+        elif self.shape == "diamond":
+            # Draw diamond shape
+            center_x = self.width // 2
+            center_y = self.height // 2
+            points = [
+                (center_x, 2),  # Top
+                (self.width - 2, center_y),  # Right
+                (center_x, self.height - 2),  # Bottom
+                (2, center_y),  # Left
+            ]
+            pygame.draw.polygon(self.surface, self.color, points)
+            # Add highlight
+            highlight_points = [
+                (center_x, 6),
+                (center_x + 8, center_y - 4),
+                (center_x, center_y),
+                (center_x - 8, center_y - 4),
+            ]
+            highlight_color = tuple(min(255, c + 50) for c in self.color)
+            pygame.draw.polygon(self.surface, highlight_color, highlight_points)
+
+        else:  # rect (default)
             pygame.draw.rect(
                 self.surface, self.color, pygame.Rect(2, 2, self.width - 4, self.height - 4)
             )
-            # Add book spine detail
-            if self.shape == "rect" and self.obj_id == "book":
-                spine_color = tuple(max(0, c - 40) for c in self.color)
-                pygame.draw.rect(
-                    self.surface, spine_color, pygame.Rect(2, 2, 6, self.height - 4)
-                )
+            # Add subtle border/depth
+            darker_color = tuple(max(0, c - 40) for c in self.color)
+            pygame.draw.rect(
+                self.surface, darker_color, pygame.Rect(2, 2, 4, self.height - 4)
+            )
 
         # Draw border if can be held
         if self.can_be_held:

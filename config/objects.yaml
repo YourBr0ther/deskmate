@@ -1,0 +1,52 @@
+# Define custom objects that appear in the room
+# Each object needs:
+#   - id: unique identifier (used internally)
+#   - name: display name shown in game
+#   - x, y: position in the room (walkable area is roughly x: 50-974, y: 400-700)
+#   - can_be_held: true if companion can pick it up, false if too heavy
+#   - color: RGB color as [R, G, B] (0-255 each)
+#   - shape: "circle", "rect", or "diamond"
+#   - width, height: size in pixels (optional, defaults to 32x32)
+
+objects:
+  - id: ball
+    name: Bouncy Ball
+    x: 200
+    y: 500
+    can_be_held: true
+    color: [255, 100, 100]  # Red
+    shape: circle
+    width: 32
+    height: 32
+
+  - id: book
+    name: Book
+    x: 350
+    y: 480
+    can_be_held: true
+    color: [100, 150, 255]  # Blue
+    shape: rect
+    width: 40
+    height: 30
+
+  - id: plant
+    name: Potted Plant
+    x: 100
+    y: 450
+    can_be_held: false  # Too heavy!
+    color: [100, 200, 100]  # Green
+    shape: plant
+    width: 48
+    height: 64
+
+  # Add your own objects below!
+  # Example:
+  # - id: coffee_mug
+  #   name: Coffee Mug
+  #   x: 500
+  #   y: 520
+  #   can_be_held: true
+  #   color: [200, 150, 100]  # Brown
+  #   shape: rect
+  #   width: 24
+  #   height: 28
