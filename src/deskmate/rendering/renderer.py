@@ -8,6 +8,7 @@ from deskmate.core.config import Settings
 from deskmate.rendering.sprites.companion import CompanionSprite
 from deskmate.rendering.sprites.object import ObjectSprite
 from deskmate.rendering.ui.chat_panel import ChatPanel
+from deskmate.rendering.ui.model_selector import ModelSelector
 from deskmate.rendering.ui.speech_bubble import SpeechBubble
 
 if TYPE_CHECKING:
@@ -40,6 +41,14 @@ class Renderer:
             settings.chat.panel_height,
         )
         self.chat_panel = ChatPanel(chat_rect, self.font)
+
+        # Model selector (top left, below room title)
+        self.model_selector = ModelSelector(
+            x=20,
+            y=60,
+            width=180,
+            font=self.font,
+        )
 
         # Sprite cache
         self.companion_sprite: CompanionSprite | None = None
@@ -75,6 +84,9 @@ class Renderer:
 
         # Draw room title
         self._draw_room_title(game_state)
+
+        # Draw model selector
+        self._draw_model_selector(game_state)
 
         # Draw held object indicator
         if game_state.companion.held_object:
@@ -169,6 +181,21 @@ class Renderer:
         y = int(game_state.companion.y) + 40
         self.screen.blit(text, (x, y))
 
+    def _draw_model_selector(self, game_state: "GameState") -> None:
+        """Draw the model selector dropdown."""
+        # Update models list if we have an Ollama service
+        if game_state.available_models:
+            current_model = ""
+            if game_state.ollama_service:
+                current_model = game_state.ollama_service.get_model()
+            self.model_selector.set_models(game_state.available_models, current_model)
+
+        self.model_selector.draw(self.screen)
+
     def get_chat_panel_rect(self) -> pygame.Rect:
         """Get the chat panel rectangle for input handling."""
         return self.chat_panel.rect
+
+    def get_model_selector(self) -> ModelSelector:
+        """Get the model selector for event handling."""
+        return self.model_selector

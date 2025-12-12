@@ -169,3 +169,42 @@ class OllamaService:
             return True
         except Exception:
             return False
+
+    def list_models(self) -> list[str]:
+        """
+        Get list of available models from Ollama.
+
+        Returns:
+            List of model names
+        """
+        try:
+            response = self.client.list()
+            models = []
+            for model in response.get("models", []):
+                name = model.get("name", "")
+                if name:
+                    # Remove the :latest tag if present for cleaner display
+                    if name.endswith(":latest"):
+                        name = name[:-7]
+                    models.append(name)
+            return sorted(models)
+        except Exception:
+            return []
+
+    def set_model(self, model: str) -> None:
+        """
+        Change the current model.
+
+        Args:
+            model: Name of the model to use
+        """
+        self.model = model
+
+    def get_model(self) -> str:
+        """
+        Get the current model name.
+
+        Returns:
+            Current model name
+        """
+        return self.model

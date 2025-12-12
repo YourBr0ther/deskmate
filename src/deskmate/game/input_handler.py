@@ -8,6 +8,7 @@ import pygame
 
 if TYPE_CHECKING:
     from deskmate.game.game_state import GameState
+    from deskmate.rendering.ui.model_selector import ModelSelector
 
 
 class ActionType(Enum):
@@ -19,6 +20,7 @@ class ActionType(Enum):
     TOGGLE_CHAT = auto()
     UPDATE_CHAT_INPUT = auto()
     DROP_OBJECT = auto()
+    CHANGE_MODEL = auto()
 
 
 @dataclass
@@ -60,6 +62,11 @@ class GameAction:
         """Create a drop-object action."""
         return cls(action_type=ActionType.DROP_OBJECT)
 
+    @classmethod
+    def change_model(cls, model_name: str) -> "GameAction":
+        """Create a change-model action."""
+        return cls(action_type=ActionType.CHANGE_MODEL, text=model_name)
+
 
 class InputHandler:
     """Handles input events and converts them to game actions."""
@@ -67,10 +74,15 @@ class InputHandler:
     def __init__(self) -> None:
         """Initialize the input handler."""
         self.chat_panel_rect: pygame.Rect | None = None
+        self.model_selector: "ModelSelector | None" = None
 
     def set_chat_panel_rect(self, rect: pygame.Rect) -> None:
         """Set the chat panel rectangle for input handling."""
         self.chat_panel_rect = rect
+
+    def set_model_selector(self, selector: "ModelSelector") -> None:
+        """Set the model selector for input handling."""
+        self.model_selector = selector
 
     def process(
         self, events: list[pygame.event.Event], game_state: "GameState"
@@ -79,6 +91,17 @@ class InputHandler:
         actions: list[GameAction] = []
 
         for event in events:
+            # Handle model selector events first
+            if self.model_selector:
+                selected_model = self.model_selector.handle_event(event)
+                if selected_model:
+                    actions.append(GameAction.change_model(selected_model))
+                    continue  # Don't process this event further
+
+                # If model selector is open, don't process other events
+                if self.model_selector.is_open:
+                    continue
+
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left click
                     action = self._handle_left_click(event.pos, game_state)

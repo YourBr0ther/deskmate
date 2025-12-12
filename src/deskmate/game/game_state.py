@@ -36,6 +36,7 @@ class GameState:
     chat_input_active: bool = False
     chat_input_text: str = ""
     pending_speech_duration: float = 0.0
+    available_models: list[str] = field(default_factory=list)
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "GameState":
@@ -88,15 +89,19 @@ class GameState:
         conversation.add_system_message(system_prompt)
 
         # Create Ollama service
+        ollama_service = None
+        available_models: list[str] = []
         try:
             ollama_service = OllamaService(
                 host=settings.ollama.host,
                 model=settings.ollama.model,
                 timeout=settings.ollama.timeout,
             )
+            # Fetch available models
+            available_models = ollama_service.list_models()
         except Exception:
             # Ollama not available, continue without AI
-            ollama_service = None
+            pass
 
         return cls(
             companion=companion,
@@ -104,6 +109,7 @@ class GameState:
             conversation=conversation,
             ollama_service=ollama_service,
             settings=settings,
+            available_models=available_models,
         )
 
     @staticmethod
@@ -241,6 +247,14 @@ class GameState:
 
         elif action.action_type == ActionType.DROP_OBJECT:
             self._drop_held_object()
+
+        elif action.action_type == ActionType.CHANGE_MODEL:
+            self._change_model(action.text)
+
+    def _change_model(self, model_name: str) -> None:
+        """Change the current Ollama model."""
+        if self.ollama_service and model_name:
+            self.ollama_service.set_model(model_name)
 
     def _handle_object_click(self, obj: GameObject) -> None:
         """Handle clicking on an object."""

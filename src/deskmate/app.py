@@ -31,8 +31,9 @@ class App:
         self.input_handler = InputHandler()
         self.renderer = Renderer(self.screen, self.settings)
 
-        # Wire up chat panel rect for input handling
+        # Wire up UI components for input handling
         self.input_handler.set_chat_panel_rect(self.renderer.get_chat_panel_rect())
+        self.input_handler.set_model_selector(self.renderer.get_model_selector())
 
     def run(self) -> None:
         """Run the main game loop."""
