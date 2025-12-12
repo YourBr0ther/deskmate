@@ -5,6 +5,7 @@ __pycache__/
 *.so
 .Python
 venv/
+.venv/
 ENV/
 env/
 .env
@@ -28,11 +29,14 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Build artifacts
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
 # Project specific
-data/personas/*
-!data/personas/.gitkeep
-data/sprites/*
-!data/sprites/.gitkeep
 *.log
 
 # Node (for future frontend)

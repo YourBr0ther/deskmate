@@ -1,0 +1,38 @@
+display:
+  width: 1024
+  height: 768
+  fps: 60
+  title: "DeskMate"
+
+companion:
+  move_speed: 150  # pixels per second
+  animation_fps: 10
+  start_x: 512
+  start_y: 500
+
+room:
+  name: "Bedroom"
+  walkable_area:
+    # Rectangle defining where companion can walk (bottom portion of screen)
+    min_x: 50
+    max_x: 974
+    min_y: 400
+    max_y: 700
+
+chat:
+  panel_width: 300
+  panel_height: 500
+  panel_x: 700  # Right side of screen
+  panel_y: 50
+  max_history: 50  # messages to keep in context
+  font_size: 16
+
+ollama:
+  host: "http://10.0.2.192:11434"
+  model: "llama3.2"  # User configurable - model agnostic
+  timeout: 30  # seconds
+
+paths:
+  assets: "assets/"
+  sprites: "assets/sprites/"
+  config: "config/"
